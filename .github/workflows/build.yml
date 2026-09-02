@@ -24,6 +24,10 @@ jobs:
       - name: Restore stable debug keystore
         run: base64 -d stable-debug-keystore.b64 > stable-debug.keystore
 
+      - name: Fix compact sameTeam syntax
+        run: |
+          sed -i '128c\    private fun sameTeam(a:String,b:String):Boolean { val regex=Regex("[^\\p{L}\\p{N}]+"); val x=a.lowercase().replace(regex," ").trim(); val y=b.lowercase().replace(regex," ").trim(); return x==y || x.startsWith(y) || y.startsWith(x) }' app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -33,5 +37,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DirettaScanner-v0.13.8-STABLE-SIGNATURE
+          name: DirettaScanner-v0.14.0-PROFILO70
           path: app/build/outputs/apk/debug/app-debug.apk
