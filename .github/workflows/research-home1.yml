@@ -1,0 +1,23 @@
+name: Historical Home 1 Study
+
+on:
+  push:
+    paths:
+      - 'analysis/high_home1_study.py'
+      - '.github/workflows/research-home1.yml'
+  workflow_dispatch:
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run study
+        run: |
+          python analysis/high_home1_study.py | tee analysis/home1-study-results.txt
+      - name: Upload study results
+        uses: actions/upload-artifact@v4
+        with:
+          name: home1-study-results
+          path: analysis/home1-study-results.txt
