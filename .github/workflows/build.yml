@@ -21,6 +21,9 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Restore stable debug keystore
+        run: base64 -d stable-debug-keystore.b64 > stable-debug.keystore
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -30,5 +33,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DirettaScanner-v0.13.7-APK
+          name: DirettaScanner-v0.13.8-STABLE-SIGNATURE
           path: app/build/outputs/apk/debug/app-debug.apk
