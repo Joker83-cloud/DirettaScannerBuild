@@ -43,7 +43,8 @@ class MainActivity : AppCompatActivity() {
         var o1:String="",
         var ox:String="",
         var o2:String="",
-        var attempted:Boolean=false
+        var attempted:Boolean=false,
+        var snaiState:String=""
     )
 
     private val matches = LinkedHashMap<String, Match>()
@@ -55,7 +56,8 @@ class MainActivity : AppCompatActivity() {
     private var rowsWithTime = 0
     private var autoExpanded = 0
     private var detailsAttempted = 0
-    private var detailsWithOdds = 0
+    private var detailsWithSnai = 0
+    private var detailsWithoutSnai = 0
     private var oddsTabsOpened = 0
     private var firstDetailDiagnostic = ""
     private var detailGeneration = 0
@@ -106,7 +108,7 @@ class MainActivity : AppCompatActivity() {
         actions.addView(copyBtn, LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
 
         status = TextView(this).apply {
-            text = "Diretta Scanner v0.13.8 · DOM + SCHEDA QUOTE\nDettagli in background con apertura QUOTE e tentativi multipli."
+            text = "Diretta Scanner v0.13.9 · SNAI\nQuote 1-X-2 esclusivamente dalla riga SNAI."
             setPadding(10,6,10,6)
             textSize = 13f
         }
@@ -139,9 +141,9 @@ class MainActivity : AppCompatActivity() {
                 val key=currentDetailKey ?: return
                 val gen=detailGeneration
                 handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) openOddsTab() },800)
-                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(false) },2300)
-                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(false) },4700)
-                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(true) },7600)
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailSnai(false) },2600)
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailSnai(false) },5000)
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailSnai(true) },8000)
             }
         }
 
@@ -163,16 +165,16 @@ class MainActivity : AppCompatActivity() {
         w.settings.domStorageEnabled=true
         w.settings.databaseEnabled=true
         w.settings.loadsImagesAutomatically=!hidden
-        w.settings.userAgentString=w.settings.userAgentString+" DirettaScanner/0.13.8"
+        w.settings.userAgentString=w.settings.userAgentString+" DirettaScanner/0.13.9"
         w.addJavascriptInterface(Bridge(),"DirettaScanner")
         w.webChromeClient=WebChromeClient()
     }
 
     private fun mainJs(observer:Boolean):String{
         val tail=if(observer) """
-          if(!window.__dsObs138){
-            window.__dsObs138=true;
-            const ob=new MutationObserver(()=>{clearTimeout(window.__dsT138);window.__dsT138=setTimeout(scan,500);});
+          if(!window.__dsObs139){
+            window.__dsObs139=true;
+            const ob=new MutationObserver(()=>{clearTimeout(window.__dsT139);window.__dsT139=setTimeout(scan,500);});
             ob.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
             setInterval(scan,2500);
           }
@@ -244,35 +246,58 @@ class MainActivity : AppCompatActivity() {
       })();
     """.trimIndent()
 
-    private fun detailJs(finalAttempt:Boolean):String = """
+    private fun snaiDetailJs(finalAttempt:Boolean):String = """
       (function(){
         function txt(e){return e?(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim():'';}
         function decimals(s){
           const out=[]; const rx=/(?:^|\s)(\d{1,2}[.,]\d{2})(?=\s|$)/g; let m;
           s=(s||'').replace(/,/g,'.');
-          while((m=rx.exec(s))!==null){const n=parseFloat(m[1]);if(n>=1.01&&n<=99){const v=n.toFixed(2);if(!out.includes(v))out.push(v);}}
+          while((m=rx.exec(s))!==null){
+            const n=parseFloat(m[1]);
+            if(n>=1.01&&n<=99){const v=n.toFixed(2);if(!out.includes(v))out.push(v);}
+          }
           return out;
         }
-        function scoreContainer(c){
-          const t=txt(c); if(!t||t.length>2400)return null;
-          const low=t.toLowerCase(); let score=0;
-          if(/(^|\s)1\s+x\s+2($|\s)/i.test(t)||/1x2/i.test(t))score+=10;
-          if(/esito finale|risultato finale|match result|full time result|1 x 2/i.test(low))score+=8;
-          if(/quote|odds/i.test(low))score+=2;
-          const vals=decimals(t); if(vals.length>=3)score+=5;
-          if(vals.length>10)score-=6;
-          return vals.length>=3?{score:score,vals:vals.slice(0,3),text:t.slice(0,700)}:null;
+        function meta(e){
+          if(!e)return '';
+          let s=txt(e)+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')+' '+(e.getAttribute('alt')||'')+' '+(e.getAttribute('data-bookmaker-name')||'')+' '+(e.getAttribute('data-testid')||'')+' '+(e.getAttribute('href')||'')+' '+(e.getAttribute('src')||'');
+          const im=e.querySelector?e.querySelector('img'):null;
+          if(im)s+=' '+(im.getAttribute('alt')||'')+' '+(im.getAttribute('title')||'')+' '+(im.getAttribute('src')||'');
+          return s.replace(/\s+/g,' ').trim();
         }
+        function isSnai(e){return /(^|[^a-z0-9])snai([^a-z0-9]|$)/i.test(meta(e));}
         let best=null;
-        const roots=[...document.querySelectorAll('[class*="odds"],[data-testid*="odds"],[class*="market"],[data-testid*="market"],[class*="bookmaker"],[data-testid*="bookmaker"],section,article')];
-        for(const c of roots){const x=scoreContainer(c);if(x&&(!best||x.score>best.score))best=x;}
-        if(!best){
-          const nodes=[...document.querySelectorAll('[data-testid*="odd"],[class*="oddsValue"],[class*="oddsCell"],[class*="oddValue"],[class*="oddsCell__odd"]')];
-          const vals=[];for(const n of nodes){for(const v of decimals(txt(n))){if(!vals.includes(v))vals.push(v);}}
-          if(vals.length>=3)best={score:1,vals:vals.slice(0,3),text:'fallback odds nodes'};
+        const all=[...document.querySelectorAll('img,a,div,span,button,[data-bookmaker-name],[data-testid]')];
+        const markers=all.filter(isSnai);
+        for(const marker of markers){
+          let p=marker;
+          for(let depth=0; p && depth<8; depth++,p=p.parentElement){
+            const t=txt(p);
+            if(!t || t.length>1400)continue;
+            const vals=decimals(t);
+            if(vals.length>=3){
+              let score=100-depth*8;
+              const low=(String(p.className||'')+' '+(p.getAttribute('data-testid')||'')).toLowerCase();
+              if(/bookmaker|odds|row|cell/.test(low))score+=12;
+              if(vals.length===3)score+=18;
+              else if(vals.length<=5)score+=8;
+              else score-=Math.min(25,(vals.length-5)*4);
+              const cand={score:score,vals:vals.slice(0,3),text:t.slice(0,900),marker:meta(marker).slice(0,250)};
+              if(!best||cand.score>best.score)best=cand;
+            }
+          }
         }
-        const body=txt(document.body).slice(0,1600);
-        const payload={ok:!!best,final:${if(finalAttempt) "true" else "false"},odds:best?best.vals:[],sample:best?best.text:body,title:document.title||'',url:location.href};
+        const body=txt(document.body).slice(0,1800);
+        const payload={
+          ok:!!best,
+          snaiFound:markers.length>0,
+          final:${if(finalAttempt) "true" else "false"},
+          odds:best?best.vals:[],
+          sample:best?('SNAI marker: '+best.marker+' | Riga: '+best.text):body,
+          title:document.title||'',
+          url:location.href,
+          markerCount:markers.length
+        };
         try{DirettaScanner.onDetail(JSON.stringify(payload));}catch(e){}
         return 'ok';
       })();
@@ -281,7 +306,7 @@ class MainActivity : AppCompatActivity() {
     private fun installMainObserver(){ web.evaluateJavascript(mainJs(true),null) }
     private fun extractMain(observer:Boolean){ web.evaluateJavascript(mainJs(observer),null) }
     private fun openOddsTab(){ if(currentDetailKey!=null) detailWeb.evaluateJavascript(openOddsTabJs(),null) }
-    private fun extractDetailOdds(finalAttempt:Boolean){ if(currentDetailKey!=null) detailWeb.evaluateJavascript(detailJs(finalAttempt),null) }
+    private fun extractDetailSnai(finalAttempt:Boolean){ if(currentDetailKey!=null) detailWeb.evaluateJavascript(snaiDetailJs(finalAttempt),null) }
 
     inner class Bridge {
         @JavascriptInterface fun onMain(json:String,seen:Int,teams:Int,times:Int,expanded:Int){
@@ -323,11 +348,17 @@ class MainActivity : AppCompatActivity() {
                         m.attempted=true
                         detailsAttempted++
                         if(ok){
-                            m.o1=odds!!.optString(0);m.ox=odds.optString(1);m.o2=odds.optString(2)
-                            if(m.o1.isNotBlank()&&m.ox.isNotBlank()&&m.o2.isNotBlank())detailsWithOdds++
+                            m.o1=odds!!.optString(0)
+                            m.ox=odds.optString(1)
+                            m.o2=odds.optString(2)
+                            m.snaiState="AVAILABLE"
+                            if(m.o1.isNotBlank()&&m.ox.isNotBlank()&&m.o2.isNotBlank())detailsWithSnai++
+                        }else{
+                            m.snaiState="NOT_AVAILABLE"
+                            detailsWithoutSnai++
                         }
                         if(firstDetailDiagnostic.isBlank()){
-                            firstDetailDiagnostic="Titolo: ${o.optString("title")}\nURL: ${o.optString("url")}\nCampione: ${o.optString("sample").take(900)}"
+                            firstDetailDiagnostic="Titolo: ${o.optString("title")}\nURL: ${o.optString("url")}\nMarker SNAI trovati: ${o.optInt("markerCount",0)}\nCampione: ${o.optString("sample").take(1100)}"
                         }
                     }
                 }
@@ -337,7 +368,7 @@ class MainActivity : AppCompatActivity() {
                     updateStatus()
                     handler.postDelayed({ processNextDetail() },350)
                 }
-            }catch(_:Throwable){ }
+            }catch(_:Throwable){}
         }
     }
 
@@ -355,7 +386,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startDetailQueue(){
         synchronized(matches){
-            matches.forEach{(k,m)->if(inSelectedRange(m.time)&&!m.attempted&&m.o1.isBlank()&&!detailQueue.contains(k)&&currentDetailKey!=k)detailQueue.add(k)}
+            matches.forEach{(k,m)->if(inSelectedRange(m.time)&&!m.attempted&&!detailQueue.contains(k)&&currentDetailKey!=k)detailQueue.add(k)}
         }
         processNextDetail()
     }
@@ -368,11 +399,11 @@ class MainActivity : AppCompatActivity() {
         currentDetailKey=key
         detailGeneration++
         val gen=detailGeneration
-        status.text="Scansione QUOTE in background… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}"
+        status.text="Ricerca SNAI in background… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}"
         detailWeb.loadUrl(m.url)
         handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) openOddsTab() },1800)
-        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(false) },4000)
-        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(true) },9000)
+        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailSnai(false) },4200)
+        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailSnai(true) },9500)
     }
 
     private fun selectedMatches():List<Match> = synchronized(matches){
@@ -380,21 +411,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatus(){
-        val sel=selectedMatches(); val complete=sel.count{it.o1.isNotBlank()&&it.ox.isNotBlank()&&it.o2.isNotBlank()}
-        status.text="Diretta Scanner v0.13.8 · DOM + SCHEDA QUOTE\nEventi nella fascia: ${sel.size} · dettagli conclusi: $detailsAttempted · con 1-X-2: $complete" + if(currentDetailKey!=null) " · scansione in corso" else ""
+        val sel=selectedMatches()
+        val snai=sel.count{it.snaiState=="AVAILABLE"}
+        val noSnai=sel.count{it.snaiState=="NOT_AVAILABLE"}
+        status.text="Diretta Scanner v0.13.9 · SNAI\nEventi nella fascia: ${sel.size} · conclusi: $detailsAttempted · SNAI: $snai · non disponibili: $noSnai" + if(currentDetailKey!=null) " · scansione in corso" else ""
     }
 
     private fun report():String{
         val list=selectedMatches()
-        val complete=list.filter{it.o1.isNotBlank()&&it.ox.isNotBlank()&&it.o2.isNotBlank()}
         val from=fromSpinner.selectedItem?.toString()?:"00:00"
         val to=toSpinner.selectedItem?.toString()?:"23:59"
         return buildString{
-            append("DIRETTA SCANNER · DOM + SCHEDA QUOTE v0.13.8")
+            append("DIRETTA SCANNER · SNAI v0.13.9")
             append("\nFASCIA: ").append(from).append(" - ").append(to)
             append("\nEVENTI NELLA FASCIA: ").append(list.size)
-            append("\nPARTITE CON 1-X-2: ").append(complete.size)
-            complete.forEachIndexed{idx,m->append("\n").append(idx+1).append(". ").append(m.time).append(" · ").append(m.home).append("  vs  ").append(m.away).append("   |   1 ").append(m.o1).append(" · X ").append(m.ox).append(" · 2 ").append(m.o2)}
+            append("\nQUOTE DI RIFERIMENTO: SNAI")
+            append("\nPARTITE CON QUOTE SNAI: ").append(list.count{it.snaiState=="AVAILABLE"})
+            list.forEachIndexed{idx,m->
+                append("\n").append(idx+1).append(". ").append(m.time).append(" · ").append(m.home).append("  vs  ").append(m.away).append("   |   ")
+                if(m.snaiState=="AVAILABLE") append("SNAI · 1 ").append(m.o1).append(" · X ").append(m.ox).append(" · 2 ").append(m.o2)
+                else if(m.snaiState=="NOT_AVAILABLE") append("SNAI NON DISPONIBILE")
+                else append("SNAI DA VERIFICARE")
+            }
             append("\n\nDIAGNOSTICA")
             append("\nRighe evento massime viste: ").append(rowsSeen)
             append("\nRighe con casa+ospite: ").append(rowsWithTeams)
@@ -402,10 +440,11 @@ class MainActivity : AppCompatActivity() {
             append("\nSezioni aperte automaticamente: ").append(autoExpanded)
             append("\nSchede QUOTE aperte: ").append(oddsTabsOpened)
             append("\nDettagli partita conclusi: ").append(detailsAttempted)
-            append("\nDettagli con almeno 3 quote: ").append(detailsWithOdds)
+            append("\nDettagli con SNAI: ").append(detailsWithSnai)
+            append("\nDettagli senza SNAI: ").append(detailsWithoutSnai)
             append("\nDettagli ancora in coda: ").append(detailQueue.size + if(currentDetailKey!=null)1 else 0)
             if(firstDetailDiagnostic.isNotBlank())append("\n\nPRIMO DETTAGLIO DIAGNOSTICO\n").append(firstDetailDiagnostic)
-            append("\n\nMetodo: elenco DOM -> squadra/orario/link; WebView nascosta -> apertura scheda QUOTE -> letture multiple -> 1-X-2. Nessun OCR e nessuna apertura manuale.")
+            append("\n\nMetodo: elenco DOM -> squadra/orario/link; WebView nascosta -> scheda QUOTE 1X2 -> identificazione riga bookmaker SNAI -> quote 1-X-2. Nessun fallback su altri bookmaker.")
         }
     }
 
