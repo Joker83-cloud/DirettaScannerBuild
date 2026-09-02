@@ -26,7 +26,7 @@ jobs:
 
       - name: Fix compact sameTeam syntax
         run: |
-          sed -i '128c\    private fun sameTeam(a:String,b:String):Boolean { val regex=Regex("[^\\p{L}\\p{N}]+"); val x=a.lowercase().replace(regex," ").trim(); val y=b.lowercase().replace(regex," ").trim(); return x==y || x.startsWith(y) || y.startsWith(x) }' app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt
+          sed -i "128c\\    private fun sameTeam(a:String,b:String):Boolean { val x=a.lowercase().filter { it.isLetterOrDigit() }; val y=b.lowercase().filter { it.isLetterOrDigit() }; return x==y || x.startsWith(y) || y.startsWith(x) }" app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt
 
       - uses: gradle/actions/setup-gradle@v4
         with:
