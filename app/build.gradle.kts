@@ -11,11 +11,23 @@ android {
         applicationId = "com.joker.direttascannerbuild"
         minSdk = 24
         targetSdk = 35
-        versionCode = 137
-        versionName = "0.13.7-dom-detail-odds"
+        versionCode = 138
+        versionName = "0.13.8-dom-detail-odds"
+    }
+
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = rootProject.file("stable-debug.keystore")
+            storePassword = "android"
+            keyAlias = "direttascanner"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("stableDebug")
+        }
         release { isMinifyEnabled = false }
     }
 
