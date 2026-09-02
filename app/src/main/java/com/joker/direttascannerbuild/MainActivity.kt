@@ -56,7 +56,9 @@ class MainActivity : AppCompatActivity() {
     private var autoExpanded = 0
     private var detailsAttempted = 0
     private var detailsWithOdds = 0
+    private var oddsTabsOpened = 0
     private var firstDetailDiagnostic = ""
+    private var detailGeneration = 0
 
     private val hours = (0..23).map { String.format("%02d:00", it) } + listOf("23:59")
 
@@ -91,11 +93,9 @@ class MainActivity : AppCompatActivity() {
         toSpinner.adapter = adapter
         fromSpinner.setSelection(12)
         toSpinner.setSelection(15)
-        val da = TextView(this).apply { text="  DALLE  "; textSize=13f }
-        val a = TextView(this).apply { text="  ALLE  "; textSize=13f }
-        filters.addView(da)
+        filters.addView(TextView(this).apply { text="  DALLE  "; textSize=13f })
         filters.addView(fromSpinner, LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
-        filters.addView(a)
+        filters.addView(TextView(this).apply { text="  ALLE  "; textSize=13f })
         filters.addView(toSpinner, LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
 
         scanBtn = Button(this).apply { text = "APPLICA E SCANSIONA" }
@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
         actions.addView(copyBtn, LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
 
         status = TextView(this).apply {
-            text = "Diretta Scanner v0.13.7 · DOM + DETTAGLI IN BACKGROUND\nPagina principale: squadre/orario/link. Dettagli: quote 1-X-2."
+            text = "Diretta Scanner v0.13.8 · DOM + SCHEDA QUOTE\nDettagli in background con apertura QUOTE e tentativi multipli."
             setPadding(10,6,10,6)
             textSize = 13f
         }
@@ -136,20 +136,24 @@ class MainActivity : AppCompatActivity() {
         detailWeb.webViewClient = object: WebViewClient(){
             override fun onPageFinished(view:WebView?, url:String?){
                 super.onPageFinished(view,url)
-                if(currentDetailKey!=null){ handler.postDelayed({ extractDetailOdds() }, 1500) }
+                val key=currentDetailKey ?: return
+                val gen=detailGeneration
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) openOddsTab() },800)
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(false) },2300)
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(false) },4700)
+                handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(true) },7600)
             }
         }
 
         scanBtn.setOnClickListener {
             extractMain(false)
-            handler.postDelayed({ startDetailQueue() }, 900)
+            handler.postDelayed({ startDetailQueue() },900)
         }
         reloadBtn.setOnClickListener { web.loadUrl("https://www.diretta.it/") }
         copyBtn.setOnClickListener {
             extractMain(false)
             handler.postDelayed({ startDetailQueue(); copyReport() },700)
         }
-
         web.loadUrl("https://www.diretta.it/")
     }
 
@@ -159,16 +163,16 @@ class MainActivity : AppCompatActivity() {
         w.settings.domStorageEnabled=true
         w.settings.databaseEnabled=true
         w.settings.loadsImagesAutomatically=!hidden
-        w.settings.userAgentString=w.settings.userAgentString+" DirettaScanner/0.13.7"
+        w.settings.userAgentString=w.settings.userAgentString+" DirettaScanner/0.13.8"
         w.addJavascriptInterface(Bridge(),"DirettaScanner")
         w.webChromeClient=WebChromeClient()
     }
 
     private fun mainJs(observer:Boolean):String{
         val tail=if(observer) """
-          if(!window.__dsObs137){
-            window.__dsObs137=true;
-            const ob=new MutationObserver(()=>{clearTimeout(window.__dsT137);window.__dsT137=setTimeout(scan,500);});
+          if(!window.__dsObs138){
+            window.__dsObs138=true;
+            const ob=new MutationObserver(()=>{clearTimeout(window.__dsT138);window.__dsT138=setTimeout(scan,500);});
             ob.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
             setInterval(scan,2500);
           }
@@ -219,7 +223,28 @@ class MainActivity : AppCompatActivity() {
         """.trimIndent()
     }
 
-    private fun detailJs():String = """
+    private fun openOddsTabJs():String = """
+      (function(){
+        function txt(e){return e?(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim():'';}
+        const all=[...document.querySelectorAll('a,button,[role="tab"],[role="button"]')];
+        let target=null;
+        for(const e of all){
+          const t=txt(e).toUpperCase();
+          const href=(e.getAttribute('href')||'').toLowerCase();
+          const test=(e.getAttribute('data-testid')||'').toLowerCase();
+          if(t==='QUOTE' || t==='ODDS' || /quote|odds/.test(href) || /quote|odds/.test(test)){
+            if(/preferit|favorite|livebet/.test((e.className||'').toString().toLowerCase()))continue;
+            target=e; if(t==='QUOTE'||t==='ODDS')break;
+          }
+        }
+        let clicked=false;
+        if(target){try{target.click();clicked=true;}catch(e){}}
+        try{DirettaScanner.onOddsTab(clicked?1:0, target?txt(target):'', location.href);}catch(e){}
+        return clicked?'clicked':'not-found';
+      })();
+    """.trimIndent()
+
+    private fun detailJs(finalAttempt:Boolean):String = """
       (function(){
         function txt(e){return e?(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim():'';}
         function decimals(s){
@@ -229,25 +254,25 @@ class MainActivity : AppCompatActivity() {
           return out;
         }
         function scoreContainer(c){
-          const t=txt(c); if(!t||t.length>1800)return null;
-          const low=t.toLowerCase();
-          let score=0;
-          if(/(^|\s)1\s+x\s+2($|\s)/i.test(t)||/1x2/i.test(t))score+=8;
-          if(/esito finale|risultato finale|match result|full time result/i.test(low))score+=6;
+          const t=txt(c); if(!t||t.length>2400)return null;
+          const low=t.toLowerCase(); let score=0;
+          if(/(^|\s)1\s+x\s+2($|\s)/i.test(t)||/1x2/i.test(t))score+=10;
+          if(/esito finale|risultato finale|match result|full time result|1 x 2/i.test(low))score+=8;
+          if(/quote|odds/i.test(low))score+=2;
           const vals=decimals(t); if(vals.length>=3)score+=5;
-          if(vals.length>8)score-=5;
-          return vals.length>=3?{score:score,vals:vals.slice(0,3),text:t.slice(0,500)}:null;
+          if(vals.length>10)score-=6;
+          return vals.length>=3?{score:score,vals:vals.slice(0,3),text:t.slice(0,700)}:null;
         }
         let best=null;
-        const marketRoots=[...document.querySelectorAll('[class*="odds"],[data-testid*="odds"],[class*="market"],[data-testid*="market"],section,article')];
-        for(const c of marketRoots){const x=scoreContainer(c);if(x&&(!best||x.score>best.score))best=x;}
+        const roots=[...document.querySelectorAll('[class*="odds"],[data-testid*="odds"],[class*="market"],[data-testid*="market"],[class*="bookmaker"],[data-testid*="bookmaker"],section,article')];
+        for(const c of roots){const x=scoreContainer(c);if(x&&(!best||x.score>best.score))best=x;}
         if(!best){
-          const nodes=[...document.querySelectorAll('[data-testid*="odd"],[class*="oddsValue"],[class*="oddsCell"],[class*="oddValue"]')];
+          const nodes=[...document.querySelectorAll('[data-testid*="odd"],[class*="oddsValue"],[class*="oddsCell"],[class*="oddValue"],[class*="oddsCell__odd"]')];
           const vals=[];for(const n of nodes){for(const v of decimals(txt(n))){if(!vals.includes(v))vals.push(v);}}
           if(vals.length>=3)best={score:1,vals:vals.slice(0,3),text:'fallback odds nodes'};
         }
-        const body=txt(document.body).slice(0,1200);
-        const payload={ok:!!best,odds:best?best.vals:[],sample:best?best.text:body,title:document.title||'',url:location.href};
+        const body=txt(document.body).slice(0,1600);
+        const payload={ok:!!best,final:${if(finalAttempt) "true" else "false"},odds:best?best.vals:[],sample:best?best.text:body,title:document.title||'',url:location.href};
         try{DirettaScanner.onDetail(JSON.stringify(payload));}catch(e){}
         return 'ok';
       })();
@@ -255,7 +280,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun installMainObserver(){ web.evaluateJavascript(mainJs(true),null) }
     private fun extractMain(observer:Boolean){ web.evaluateJavascript(mainJs(observer),null) }
-    private fun extractDetailOdds(){ if(currentDetailKey!=null) detailWeb.evaluateJavascript(detailJs(),null) }
+    private fun openOddsTab(){ if(currentDetailKey!=null) detailWeb.evaluateJavascript(openOddsTabJs(),null) }
+    private fun extractDetailOdds(finalAttempt:Boolean){ if(currentDetailKey!=null) detailWeb.evaluateJavascript(detailJs(finalAttempt),null) }
 
     inner class Bridge {
         @JavascriptInterface fun onMain(json:String,seen:Int,teams:Int,times:Int,expanded:Int){
@@ -278,31 +304,40 @@ class MainActivity : AppCompatActivity() {
             }catch(_:Throwable){}
         }
 
+        @JavascriptInterface fun onOddsTab(opened:Int,label:String,url:String){
+            if(opened==1) oddsTabsOpened++
+        }
+
         @JavascriptInterface fun onDetail(json:String){
             try{
                 val o=JSONObject(json)
                 val key=currentDetailKey ?: return
                 val odds=o.optJSONArray("odds")
+                val ok=odds!=null && odds.length()>=3
+                val finalAttempt=o.optBoolean("final",false)
+                if(!ok && !finalAttempt) return
+
                 synchronized(matches){
                     val m=matches[key]
-                    if(m!=null){
+                    if(m!=null && !m.attempted){
                         m.attempted=true
                         detailsAttempted++
-                        if(odds!=null && odds.length()>=3){
-                            m.o1=odds.optString(0);m.ox=odds.optString(1);m.o2=odds.optString(2)
+                        if(ok){
+                            m.o1=odds!!.optString(0);m.ox=odds.optString(1);m.o2=odds.optString(2)
                             if(m.o1.isNotBlank()&&m.ox.isNotBlank()&&m.o2.isNotBlank())detailsWithOdds++
                         }
                         if(firstDetailDiagnostic.isBlank()){
-                            firstDetailDiagnostic="Titolo: ${o.optString("title")}\nURL: ${o.optString("url")}\nCampione: ${o.optString("sample").take(700)}"
+                            firstDetailDiagnostic="Titolo: ${o.optString("title")}\nURL: ${o.optString("url")}\nCampione: ${o.optString("sample").take(900)}"
                         }
                     }
                 }
                 runOnUiThread{
                     currentDetailKey=null
+                    detailGeneration++
                     updateStatus()
                     handler.postDelayed({ processNextDetail() },350)
                 }
-            }catch(_:Throwable){ runOnUiThread{currentDetailKey=null;handler.postDelayed({processNextDetail()},350)} }
+            }catch(_:Throwable){ }
         }
     }
 
@@ -331,9 +366,13 @@ class MainActivity : AppCompatActivity() {
         if(key==null){updateStatus();return}
         val m=matches[key]?:run{processNextDetail();return}
         currentDetailKey=key
-        status.text="Scansione dettagli in background… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}"
+        detailGeneration++
+        val gen=detailGeneration
+        status.text="Scansione QUOTE in background… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}"
         detailWeb.loadUrl(m.url)
-        handler.postDelayed({ if(currentDetailKey==key) extractDetailOdds() },4500)
+        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) openOddsTab() },1800)
+        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(false) },4000)
+        handler.postDelayed({ if(currentDetailKey==key && detailGeneration==gen) extractDetailOdds(true) },9000)
     }
 
     private fun selectedMatches():List<Match> = synchronized(matches){
@@ -342,7 +381,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateStatus(){
         val sel=selectedMatches(); val complete=sel.count{it.o1.isNotBlank()&&it.ox.isNotBlank()&&it.o2.isNotBlank()}
-        status.text="Diretta Scanner v0.13.7 · DOM + DETTAGLI BACKGROUND\nEventi nella fascia: ${sel.size} · dettagli provati: $detailsAttempted · con 1-X-2: $complete" + if(currentDetailKey!=null) " · scansione in corso" else ""
+        status.text="Diretta Scanner v0.13.8 · DOM + SCHEDA QUOTE\nEventi nella fascia: ${sel.size} · dettagli conclusi: $detailsAttempted · con 1-X-2: $complete" + if(currentDetailKey!=null) " · scansione in corso" else ""
     }
 
     private fun report():String{
@@ -351,7 +390,7 @@ class MainActivity : AppCompatActivity() {
         val from=fromSpinner.selectedItem?.toString()?:"00:00"
         val to=toSpinner.selectedItem?.toString()?:"23:59"
         return buildString{
-            append("DIRETTA SCANNER · DOM + DETTAGLI v0.13.7")
+            append("DIRETTA SCANNER · DOM + SCHEDA QUOTE v0.13.8")
             append("\nFASCIA: ").append(from).append(" - ").append(to)
             append("\nEVENTI NELLA FASCIA: ").append(list.size)
             append("\nPARTITE CON 1-X-2: ").append(complete.size)
@@ -361,11 +400,12 @@ class MainActivity : AppCompatActivity() {
             append("\nRighe con casa+ospite: ").append(rowsWithTeams)
             append("\nRighe con orario: ").append(rowsWithTime)
             append("\nSezioni aperte automaticamente: ").append(autoExpanded)
-            append("\nDettagli partita tentati: ").append(detailsAttempted)
+            append("\nSchede QUOTE aperte: ").append(oddsTabsOpened)
+            append("\nDettagli partita conclusi: ").append(detailsAttempted)
             append("\nDettagli con almeno 3 quote: ").append(detailsWithOdds)
             append("\nDettagli ancora in coda: ").append(detailQueue.size + if(currentDetailKey!=null)1 else 0)
             if(firstDetailDiagnostic.isNotBlank())append("\n\nPRIMO DETTAGLIO DIAGNOSTICO\n").append(firstDetailDiagnostic)
-            append("\n\nMetodo: elenco principale DOM -> squadra/orario/link; pagina dettaglio caricata in WebView nascosta -> ricerca quote 1-X-2. Nessun OCR e nessuna apertura manuale dei match.")
+            append("\n\nMetodo: elenco DOM -> squadra/orario/link; WebView nascosta -> apertura scheda QUOTE -> letture multiple -> 1-X-2. Nessun OCR e nessuna apertura manuale.")
         }
     }
 
