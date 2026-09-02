@@ -11,8 +11,8 @@ android {
         applicationId = "com.joker.direttascannerbuild"
         minSdk = 24
         targetSdk = 35
-        versionCode = 138
-        versionName = "0.13.8-dom-detail-odds"
+        versionCode = 139
+        versionName = "0.13.9-snai"
     }
 
     signingConfigs {
