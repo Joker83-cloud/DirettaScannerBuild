@@ -11,8 +11,8 @@ android {
         applicationId = "com.joker.direttascannerbuild"
         minSdk = 24
         targetSdk = 35
-        versionCode = 143
-        versionName = "0.14.3-auto-open-profile70"
+        versionCode = 144
+        versionName = "0.14.4-anti-blocco-profile70"
     }
 
     signingConfigs {
