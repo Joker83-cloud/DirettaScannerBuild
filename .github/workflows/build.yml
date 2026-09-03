@@ -10,77 +10,66 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: android-actions/setup-android@v3
-
       - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
       - name: Restore stable debug keystore
         run: base64 -d stable-debug-keystore.b64 > stable-debug.keystore
 
-      - name: Apply SMART + AUTO-OPEN tuning
+      - name: Apply SMART + AUTO-OPEN + ANTI-BLOCK tuning
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt')
-          s = p.read_text()
+          p=Path('app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt')
+          s=p.read_text()
+          old='    private fun sameTeam(a:String,b:String):Boolean{fun n(s:String)=s.lowercase().replace(Regex("[^\\\\p{L}\\\\p{N}]+")," ").trim();val x=n(a);val y=n(b);return x==y||x.startsWith(y)||y.startsWith(x)}'
+          new='    private fun sameTeam(a:String,b:String):Boolean { val x=a.lowercase().filter { it.isLetterOrDigit() }; val y=b.lowercase().filter { it.isLetterOrDigit() }; return x==y || x.startsWith(y) || y.startsWith(x) }'
+          s=s.replace(old,new)
+          s=s.replace('v0.14.0','v0.14.4 ANTI-BLOCCO')
+          s=s.replace('DirettaScanner/0.14.0','DirettaScanner/0.14.4-antiblock')
 
-          # Stable team-name normalization used by the working build.
-          old = '    private fun sameTeam(a:String,b:String):Boolean{fun n(s:String)=s.lowercase().replace(Regex("[^\\\\p{L}\\\\p{N}]+")," ").trim();val x=n(a);val y=n(b);return x==y||x.startsWith(y)||y.startsWith(x)}'
-          new = '    private fun sameTeam(a:String,b:String):Boolean { val x=a.lowercase().filter { it.isLetterOrDigit() }; val y=b.lowercase().filter { it.isLetterOrDigit() }; return x==y || x.startsWith(y) || y.startsWith(x) }'
-          s = s.replace(old, new)
+          old_expand='''function expand(){let n=0;for(const h of [...document.querySelectorAll('.event__header,[class*=\\"event__header\\"]')]){const low=(String(h.className||'')+' '+txt(h)).toLowerCase();if(/menu|drawer|navigation|sidebar|filter|setting|preferit/.test(low))continue;const c=h.querySelector('[aria-expanded=\\"false\\"],button[data-testid*=\\"expand\\"],[role=\\"button\\"][data-testid*=\\"expand\\"]');if(c&&c.getAttribute('aria-expanded')==='false'){try{c.click();n++;}catch(e){}}}return n;}'''
+          new_expand='''function expand(){let n=0;for(const h of [...document.querySelectorAll('.event__header,[class*=\\"event__header\\"]')]){const low=(String(h.className||'')+' '+txt(h)).toLowerCase();if(/menu|drawer|navigation|sidebar|filter|setting|preferit/.test(low))continue;let c=h.querySelector('[aria-expanded=\\"false\\"]');if(!c)c=h.querySelector('[class*=\\"leagueShowMoreCont\\"],[class*=\\"event__expander\\"],[class*=\\"event__collapse\\"],[class*=\\"event__toggle\\"],button[data-testid*=\\"expand\\"],[role=\\"button\\"][data-testid*=\\"expand\\"]');if(!c){const cand=[...h.querySelectorAll('button,[role=\\"button\\"],div,span')].filter(e=>{const cl=String(e.className||'').toLowerCase();const ar=e.getAttribute&&e.getAttribute('aria-expanded');return ar==='false'||/showmore|expander|collapse|toggle/.test(cl);});c=cand.length?cand[cand.length-1]:null;}if(c){const ar=c.getAttribute&&c.getAttribute('aria-expanded');const st=c.getAttribute&&c.getAttribute('data-state');const cl=String(c.className||'').toLowerCase();const closed=ar==='false'||st==='closed'||/showmore|collapsed|closed/.test(cl);if(closed){try{c.click();n++;}catch(e){}}}}return n;}'''
+          if old_expand not in s: raise SystemExit('expand pattern missing')
+          s=s.replace(old_expand,new_expand)
 
-          # Version labels / UA.
-          s = s.replace('v0.14.0', 'v0.14.3 AUTO-OPEN')
-          s = s.replace('DirettaScanner/0.14.0', 'DirettaScanner/0.14.3-autoopen')
+          old_detail='        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},2600);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},5000);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},8000)}}'
+          new_detail='        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;val u=url?:"";if(u.contains("/quote/")){handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},1200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3300);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},6500)}else{handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},700);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3000)}}}'
+          if old_detail not in s: raise SystemExit('detail pattern missing')
+          s=s.replace(old_detail,new_detail)
 
-          # Open only collapsed COMPETITION headers. Never use a global aria-expanded selector.
-          old_expand = '''function expand(){let n=0;for(const h of [...document.querySelectorAll('.event__header,[class*=\\"event__header\\"]')]){const low=(String(h.className||'')+' '+txt(h)).toLowerCase();if(/menu|drawer|navigation|sidebar|filter|setting|preferit/.test(low))continue;const c=h.querySelector('[aria-expanded=\\"false\\"],button[data-testid*=\\"expand\\"],[role=\\"button\\"][data-testid*=\\"expand\\"]');if(c&&c.getAttribute('aria-expanded')==='false'){try{c.click();n++;}catch(e){}}}return n;}'''
-          new_expand = '''function expand(){let n=0;for(const h of [...document.querySelectorAll('.event__header,[class*=\\"event__header\\"]')]){const low=(String(h.className||'')+' '+txt(h)).toLowerCase();if(/menu|drawer|navigation|sidebar|filter|setting|preferit/.test(low))continue;let c=h.querySelector('[aria-expanded=\\"false\\"]');if(!c)c=h.querySelector('[class*=\\"leagueShowMoreCont\\"],[class*=\\"event__expander\\"],[class*=\\"event__collapse\\"],[class*=\\"event__toggle\\"],button[data-testid*=\\"expand\\"],[role=\\"button\\"][data-testid*=\\"expand\\"]');if(!c){const cand=[...h.querySelectorAll('button,[role=\\"button\\"],div,span')].filter(e=>{const cl=String(e.className||'').toLowerCase();const ar=e.getAttribute&&e.getAttribute('aria-expanded');return ar==='false'||/showmore|expander|collapse|toggle/.test(cl);});c=cand.length?cand[cand.length-1]:null;}if(c){const ar=c.getAttribute&&c.getAttribute('aria-expanded');const st=c.getAttribute&&c.getAttribute('data-state');const cl=String(c.className||'').toLowerCase();const closed=ar==='false'||st==='closed'||/showmore|collapsed|closed/.test(cl);if(closed){try{c.click();n++;}catch(e){}}}}return n;}'''
-          if old_expand not in s:
-              raise SystemExit('expand function pattern not found')
-          s = s.replace(old_expand, new_expand)
+          old_hist='        historyWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentHistoryKey?:return;val gen=historyGeneration;handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},3500);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},6000)}}'
+          new_hist='        historyWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentHistoryKey?:return;val gen=historyGeneration;handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1200);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},2800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},5000)}}'
+          if old_hist not in s: raise SystemExit('history pattern missing')
+          s=s.replace(old_hist,new_hist)
 
-          # SMART detail-page strategy.
-          old_detail = '        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},2600);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},5000);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},8000)}}'
-          new_detail = '        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;val u=url?:"";if(u.contains("/quote/")){handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},1200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3300);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},7000)}else{handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},700);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3000);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},9000)}}}'
-          if old_detail not in s:
-              raise SystemExit('detail WebViewClient pattern not found')
-          s = s.replace(old_detail, new_detail)
+          old_proc='    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;val gen=detailGeneration;status.text="SNAI… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}";detailWeb.loadUrl(m.url);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},1800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},4200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},9500)}'
+          new_proc='    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;val gen=detailGeneration;val total=detailsAttempted+detailQueue.size+1;status.text="SNAI ${detailsAttempted+1}/$total · ${m.time} ${m.home} vs ${m.away}";detailWeb.loadUrl(m.url);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen){extractDetailSnai(true)}},12000)}'
+          if old_proc not in s: raise SystemExit('process detail pattern missing')
+          s=s.replace(old_proc,new_proc)
 
-          old_hist = '        historyWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentHistoryKey?:return;val gen=historyGeneration;handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},3500);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},6000)}}'
-          new_hist = '        historyWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentHistoryKey?:return;val gen=historyGeneration;handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1200);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},2800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},5500)}}'
-          if old_hist not in s:
-              raise SystemExit('history WebViewClient pattern not found')
-          s = s.replace(old_hist, new_hist)
+          # History hard watchdog: even if onPageFinished never arrives, force final extraction and advance.
+          old_ph='    private fun processNextHistory(){if(currentHistoryKey!=null||currentDetailKey!=null||detailQueue.isNotEmpty())return;val key=if(historyQueue.isEmpty())null else historyQueue.removeFirst();if(key==null){updateStatus();return};val m=matches[key]?:run{processNextHistory();return};if(m.homeTeamUrl.isBlank()||m.awayTeamUrl.isBlank()){m.historyState="NO_URL";historiesUnavailable++;processNextHistory();return};currentHistoryKey=key;historyGeneration++;historyStage=0;homeRows=null;awayRows=null;status.text="Storico… ${m.home} · ultime interne";historyWeb.loadUrl(resultsUrl(m.homeTeamUrl));handler.postDelayed({extractHistory(true)},9500)}'
+          new_ph='    private fun processNextHistory(){if(currentHistoryKey!=null||currentDetailKey!=null||detailQueue.isNotEmpty())return;val key=if(historyQueue.isEmpty())null else historyQueue.removeFirst();if(key==null){updateStatus();return};val m=matches[key]?:run{processNextHistory();return};if(m.homeTeamUrl.isBlank()||m.awayTeamUrl.isBlank()){m.historyState="NO_URL";historiesUnavailable++;processNextHistory();return};currentHistoryKey=key;historyGeneration++;val gen=historyGeneration;historyStage=0;homeRows=null;awayRows=null;val total=historiesDone+historiesUnavailable+historyQueue.size+1;status.text="STORICO ${historiesDone+historiesUnavailable+1}/$total · ${m.home}";historyWeb.loadUrl(resultsUrl(m.homeTeamUrl));handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},8000)}'
+          if old_ph not in s: raise SystemExit('process history pattern missing')
+          s=s.replace(old_ph,new_ph)
 
-          old_proc = '    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;val gen=detailGeneration;status.text="SNAI… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}";detailWeb.loadUrl(m.url);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},1800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},4200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},9500)}'
-          new_proc = '    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;status.text="SNAI… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}";detailWeb.loadUrl(m.url)}'
-          if old_proc not in s:
-              raise SystemExit('processNextDetail pattern not found')
-          s = s.replace(old_proc, new_proc)
-
-          s = s.replace('handler.postDelayed({processNextDetail()},250)', 'handler.postDelayed({processNextDetail()},120)')
-          s = s.replace('handler.postDelayed({processNextHistory()},200)', 'handler.postDelayed({processNextHistory()},120)')
-          s = s.replace('handler.postDelayed({processNextHistory()},300)', 'handler.postDelayed({processNextHistory()},120)')
-
+          s=s.replace('handler.postDelayed({processNextDetail()},250)','handler.postDelayed({processNextDetail()},120)')
+          s=s.replace('handler.postDelayed({processNextHistory()},200)','handler.postDelayed({processNextHistory()},120)')
+          s=s.replace('handler.postDelayed({processNextHistory()},300)','handler.postDelayed({processNextHistory()},120)')
           p.write_text(s)
           PY
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
-
       - uses: actions/upload-artifact@v4
         with:
-          name: DirettaScanner-v0.14.3-AUTO-OPEN-PROFILO70
+          name: DirettaScanner-v0.14.4-ANTI-BLOCCO-PROFILO70
           path: app/build/outputs/apk/debug/app-debug.apk
