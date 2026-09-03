@@ -24,29 +24,51 @@ jobs:
       - name: Restore stable debug keystore
         run: base64 -d stable-debug-keystore.b64 > stable-debug.keystore
 
-      - name: Fix compact sameTeam syntax
-        run: |
-          sed -i "128c\\    private fun sameTeam(a:String,b:String):Boolean { val x=a.lowercase().filter { it.isLetterOrDigit() }; val y=b.lowercase().filter { it.isLetterOrDigit() }; return x==y || x.startsWith(y) || y.startsWith(x) }" app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt
-
-      - name: Apply FAST scan tuning
+      - name: Apply SMART scan tuning
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('app/src/main/java/com/joker/direttascannerbuild/MainActivity.kt')
           s = p.read_text()
-          s = s.replace('v0.14.0', 'v0.14.1 FAST').replace('0.14.0"', '0.14.1-fast"')
-          s = s.replace('},800);handler.postDelayed', '},350);handler.postDelayed')
-          s = s.replace('},2600);handler.postDelayed', '},1100);handler.postDelayed')
-          s = s.replace('},5000);handler.postDelayed', '},2100);handler.postDelayed')
-          s = s.replace('},8000)}}', '},3800)}}')
-          s = s.replace('},1800);handler.postDelayed', '},700);handler.postDelayed')
-          s = s.replace('},3500);handler.postDelayed', '},1600);handler.postDelayed')
-          s = s.replace('},6000)}}', '},3000)}}')
-          s = s.replace('},4200);handler.postDelayed', '},1700);handler.postDelayed')
-          s = s.replace('},9500)}', '},4000)}')
-          s = s.replace('handler.postDelayed({processNextDetail()},250)', 'handler.postDelayed({processNextDetail()},80)')
-          s = s.replace('handler.postDelayed({processNextHistory()},200)', 'handler.postDelayed({processNextHistory()},100)')
-          s = s.replace('handler.postDelayed({processNextHistory()},300)', 'handler.postDelayed({processNextHistory()},100)')
+
+          # Stable team-name normalization used by the working build.
+          old = '    private fun sameTeam(a:String,b:String):Boolean{fun n(s:String)=s.lowercase().replace(Regex("[^\\\\p{L}\\\\p{N}]+")," ").trim();val x=n(a);val y=n(b);return x==y||x.startsWith(y)||y.startsWith(x)}'
+          new = '    private fun sameTeam(a:String,b:String):Boolean { val x=a.lowercase().filter { it.isLetterOrDigit() }; val y=b.lowercase().filter { it.isLetterOrDigit() }; return x==y || x.startsWith(y) || y.startsWith(x) }'
+          s = s.replace(old, new)
+
+          # Version labels / UA.
+          s = s.replace('v0.14.0', 'v0.14.2 SMART')
+          s = s.replace('DirettaScanner/0.14.0', 'DirettaScanner/0.14.2-smart')
+
+          # SMART detail-page strategy:
+          # - on normal match page: open QUOTE once, then give the page enough time;
+          # - on /quote/ page: do not click QUOTE again, only retry SNAI extraction;
+          # - once SNAI is found, generation changes and all pending callbacks become inert.
+          old_detail = '        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},2600);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},5000);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},8000)}}'
+          new_detail = '        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;val u=url?:"";if(u.contains("/quote/")){handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},1200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3300);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},7000)}else{handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},700);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3000);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},9000)}}}'
+          if old_detail not in s:
+              raise SystemExit('detail WebViewClient pattern not found')
+          s = s.replace(old_detail, new_detail)
+
+          # History remains sequential, but avoids unnecessarily long waits.
+          old_hist = '        historyWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentHistoryKey?:return;val gen=historyGeneration;handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},3500);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},6000)}}'
+          new_hist = '        historyWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentHistoryKey?:return;val gen=historyGeneration;handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1200);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},2800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},5500)}}'
+          if old_hist not in s:
+              raise SystemExit('history WebViewClient pattern not found')
+          s = s.replace(old_hist, new_hist)
+
+          # Remove the second, duplicate timing chain from processNextDetail.
+          old_proc = '    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;val gen=detailGeneration;status.text="SNAI… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}";detailWeb.loadUrl(m.url);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},1800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},4200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},9500)}'
+          new_proc = '    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;status.text="SNAI… ${detailsAttempted+1} · ${m.time} ${m.home} vs ${m.away}";detailWeb.loadUrl(m.url)}'
+          if old_proc not in s:
+              raise SystemExit('processNextDetail pattern not found')
+          s = s.replace(old_proc, new_proc)
+
+          # Small transition delays only after a result has actually been received.
+          s = s.replace('handler.postDelayed({processNextDetail()},250)', 'handler.postDelayed({processNextDetail()},120)')
+          s = s.replace('handler.postDelayed({processNextHistory()},200)', 'handler.postDelayed({processNextHistory()},120)')
+          s = s.replace('handler.postDelayed({processNextHistory()},300)', 'handler.postDelayed({processNextHistory()},120)')
+
           p.write_text(s)
           PY
 
@@ -59,5 +81,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DirettaScanner-v0.14.1-FAST-PROFILO70
+          name: DirettaScanner-v0.14.2-SMART-PROFILO70
           path: app/build/outputs/apk/debug/app-debug.apk
