@@ -19,7 +19,7 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Restore stable debug keystore
         run: base64 -d stable-debug-keystore.b64 > stable-debug.keystore
-      - name: Apply v0.14.6 LIGHT
+      - name: Apply v0.14.7 REAL AUTO-OPEN
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -28,12 +28,45 @@ jobs:
           s=p.read_text()
 
           s=s.replace('    private fun sameTeam(a:String,b:String):Boolean{fun n(s:String)=s.lowercase().replace(Regex("[^\\\\p{L}\\\\p{N}]+")," ").trim();val x=n(a);val y=n(b);return x==y||x.startsWith(y)||y.startsWith(x)}','    private fun sameTeam(a:String,b:String):Boolean { val x=a.lowercase().filter { it.isLetterOrDigit() }; val y=b.lowercase().filter { it.isLetterOrDigit() }; return x==y || x.startsWith(y) || y.startsWith(x) }')
-          s=s.replace('v0.14.0','v0.14.6 LIGHT').replace('DirettaScanner/0.14.0','DirettaScanner/0.14.6-light')
+          s=s.replace('v0.14.0','v0.14.7 REAL AUTO-OPEN').replace('DirettaScanner/0.14.0','DirettaScanner/0.14.7-real-auto-open')
 
-          new_expand='''function expand(){let n=0;for(const h of [...document.querySelectorAll('.event__header,[class*=\\"event__header\\"]')]){const low=(String(h.className||'')+' '+txt(h)).toLowerCase();if(/menu|drawer|navigation|sidebar|filter|setting|preferit/.test(low))continue;let c=h.querySelector('[aria-expanded=\\"false\\"]');if(!c)c=h.querySelector('[class*=\\"leagueShowMoreCont\\"],[class*=\\"event__expander\\"],[class*=\\"event__collapse\\"],[class*=\\"event__toggle\\"],button[data-testid*=\\"expand\\"],[role=\\"button\\"][data-testid*=\\"expand\\"]');if(!c){const cand=[...h.querySelectorAll('button,[role=\\"button\\"],div,span')].filter(e=>{const cl=String(e.className||'').toLowerCase();const ar=e.getAttribute&&e.getAttribute('aria-expanded');return ar==='false'||/showmore|expander|collapse|toggle/.test(cl);});c=cand.length?cand[cand.length-1]:null;}if(c){const ar=c.getAttribute&&c.getAttribute('aria-expanded');const st=c.getAttribute&&c.getAttribute('data-state');const cl=String(c.className||'').toLowerCase();if(ar==='false'||st==='closed'||/showmore|collapsed|closed/.test(cl)){try{c.click();n++;}catch(e){}}}}return n;}'''
+          # Extra diagnostics for collapsed competitions.
+          old_vars='    private var rowsSeen=0;private var rowsWithTeams=0;private var rowsWithTime=0;private var autoExpanded=0'
+          new_vars='    private var rowsSeen=0;private var rowsWithTeams=0;private var rowsWithTime=0;private var autoExpanded=0;private var leagueHeadersSeen=0;private var leaguesClosedSeen=0;private var rowsBeforeExpand=0;private var rowsAfterExpand=0'
+          if old_vars not in s: raise SystemExit('diagnostic vars missing')
+          s=s.replace(old_vars,new_vars)
+
+          # REAL AUTO-OPEN: target only competition show-more controls, never generic page controls.
+          new_expand='''function expand(){const before=document.querySelectorAll('.event__match[data-event-row=\\"true\\"],.event__match').length;const headers=[...document.querySelectorAll('.event__header,[class*=\\"event__header\\"]')];let closed=0,clicked=0;for(const h of headers){const low=(String(h.className||'')+' '+txt(h)).toLowerCase();if(/menu|drawer|navigation|sidebar|filter|setting|preferit/.test(low))continue;const controls=[...h.querySelectorAll('.wclIcon__leagueShowMoreCont,[class*=\\"leagueShowMoreCont\\"],button[class*=\\"leagueShowMore\\"],[role=\\"button\\"][class*=\\"leagueShowMore\\"]')];for(const c of controls){let trg=c.querySelector('[data-state=\\"closed\\"],[aria-expanded=\\"false\\"],[class*=\\"_trigger_\\"]')||c;const state=(trg.getAttribute&&trg.getAttribute('data-state'))||(c.getAttribute&&c.getAttribute('data-state'))||'';const aria=(trg.getAttribute&&trg.getAttribute('aria-expanded'))||(c.getAttribute&&c.getAttribute('aria-expanded'))||'';const label=((trg.getAttribute&&trg.getAttribute('aria-label'))||'')+' '+((trg.getAttribute&&trg.getAttribute('title'))||'');const isClosed=state==='closed'||aria==='false'||/display matches|show matches|mostra.*partite|espandi/i.test(label);if(!isClosed)continue;closed++;try{trg.click();clicked++;}catch(e){try{c.click();clicked++;}catch(_){}}}}return {clicked,headers:headers.length,closed,before};}'''
           s,n=re.subn(r'function expand\(\)\{.*?return n;\}',lambda m:new_expand,s,count=1,flags=re.S)
           if n!=1: raise SystemExit('expand patch failed')
 
+          # Send expansion diagnostics separately while keeping onMain compatible.
+          old_scan="function scan(){const ex=expand(),rows=[...document.querySelectorAll('.event__match[data-event-row=\\\"true\\\"],.event__match')],out=[];let teams=0,times=0;"
+          new_scan="function scan(){const ex=expand(),rows=[...document.querySelectorAll('.event__match[data-event-row=\\\"true\\\"],.event__match')],out=[];let teams=0,times=0;try{DirettaScanner.onExpandDiag(ex.headers,ex.closed,ex.clicked,ex.before,rows.length);}catch(e){}"
+          if old_scan not in s: raise SystemExit('scan prefix missing')
+          s=s.replace(old_scan,new_scan,1)
+          s=s.replace('DirettaScanner.onMain(JSON.stringify(out),rows.length,teams,times,ex);','DirettaScanner.onMain(JSON.stringify(out),rows.length,teams,times,ex.clicked);',1)
+
+          # Add bridge method for auto-open metrics.
+          anchor='        @JavascriptInterface fun onOddsTab(opened:Int,label:String,url:String){if(opened==1)oddsTabsOpened++}'
+          bridge='        @JavascriptInterface fun onExpandDiag(headers:Int,closed:Int,clicked:Int,before:Int,after:Int){synchronized(matches){leagueHeadersSeen=maxOf(leagueHeadersSeen,headers);leaguesClosedSeen=maxOf(leaguesClosedSeen,closed);rowsBeforeExpand=maxOf(rowsBeforeExpand,before);rowsAfterExpand=maxOf(rowsAfterExpand,after)}}\n'
+          if anchor not in s: raise SystemExit('bridge anchor missing')
+          s=s.replace(anchor,bridge+anchor,1)
+
+          # Give newly opened competitions enough time to materialize before building the quote queue.
+          old_click='        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({startDetailQueue()},900)}'
+          new_click='        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600)}'
+          if old_click not in s: raise SystemExit('scan button missing')
+          s=s.replace(old_click,new_click,1)
+
+          # End time is exclusive: 15:00-18:00 means 15:00 through 17:59.
+          old_range='    private fun inSelectedRange(t:String):Boolean{val f=mins(fromSpinner.selectedItem?.toString()?:"00:00");val z=mins(toSpinner.selectedItem?.toString()?:"23:59");val x=mins(t);return if(f<=z)x in f..z else x>=f||x<=z}'
+          new_range='    private fun inSelectedRange(t:String):Boolean{val f=mins(fromSpinner.selectedItem?.toString()?:"00:00");val z=mins(toSpinner.selectedItem?.toString()?:"23:59");val x=mins(t);return if(x<0||f<0||z<0)false else if(f<=z)x>=f&&x<z else x>=f||x<z}'
+          if old_range not in s: raise SystemExit('range function missing')
+          s=s.replace(old_range,new_range,1)
+
+          # Preserve LIGHT/SNAI logic from v0.14.6.
           old_detail='        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},2600);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},5000);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},8000)}}'
           new_detail='        detailWeb.webViewClient=object:WebViewClient(){override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);val key=currentDetailKey?:return;val gen=detailGeneration;val u=url?:"";if(u.contains("/quote/quote-1x2/")){handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},1200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},6000)}else{handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},4500)}}}'
           if old_detail not in s: raise SystemExit('detail client missing')
@@ -69,6 +102,13 @@ jobs:
           if needle not in s: raise SystemExit('settings patch missing')
           s=s.replace(needle,repl,1)
 
+          # Report clearly states end-exclusive time and auto-open diagnostics.
+          old_diag='append("\\n\\nDIAGNOSTICA\\nRighe evento max: $rowsSeen · squadre: $rowsWithTeams · orari: $rowsWithTime\\nSchede QUOTE: $oddsTabsOpened · dettagli: $detailsAttempted · SNAI: $detailsWithSnai · senza SNAI: $detailsWithoutSnai\\nStorici completati: $historyCompleted · non disponibili: $historyUnavailable · profilo: $profilePassed\\nCode residue: quote ${detailQueue.size+if(currentDetailKey!=null)1 else 0} · storico ${historyQueue.size+if(currentHistoryKey!=null)1 else 0}")'
+          new_diag='append("\\n\\nDIAGNOSTICA\\nRighe evento max: $rowsSeen · squadre: $rowsWithTeams · orari: $rowsWithTime\\nAUTO-OPEN: intestazioni $leagueHeadersSeen · chiusi rilevati $leaguesClosedSeen · aperture $autoExpanded · eventi prima $rowsBeforeExpand · eventi dopo $rowsAfterExpand\\nSchede QUOTE: $oddsTabsOpened · dettagli: $detailsAttempted · SNAI: $detailsWithSnai · senza SNAI: $detailsWithoutSnai\\nStorici completati: $historyCompleted · non disponibili: $historyUnavailable · profilo: $profilePassed\\nCode residue: quote ${detailQueue.size+if(currentDetailKey!=null)1 else 0} · storico ${historyQueue.size+if(currentHistoryKey!=null)1 else 0}")'
+          if old_diag not in s: raise SystemExit('report diagnostic missing')
+          s=s.replace(old_diag,new_diag,1)
+          s=s.replace('FASCIA: $from - $to\\nPALETTI:', 'FASCIA: $from - $to (ora finale esclusa)\\nPALETTI:',1)
+
           p.write_text(s)
           PY
       - uses: gradle/actions/setup-gradle@v4
@@ -78,5 +118,5 @@ jobs:
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: DirettaScanner-v0.14.6-LIGHT-PROFILO70
+          name: DirettaScanner-v0.14.7-REAL-AUTO-OPEN
           path: app/build/outputs/apk/debug/app-debug.apk
