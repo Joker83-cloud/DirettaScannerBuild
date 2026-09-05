@@ -25,9 +25,7 @@ android {
     }
 
     buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("stableDebug")
-        }
+        getByName("debug") { signingConfig = signingConfigs.getByName("stableDebug") }
         release { isMinifyEnabled = false }
     }
 
@@ -61,70 +59,66 @@ val patchV0152 = tasks.register("patchV0152") {
         if (!s.contains(oldDiagBridge)) error("expand diagnostic bridge not found")
         s = s.replace(oldDiagBridge, newDiagBridge)
 
-        val varsAnchor = "private var leagueHeadersSeen=0;private var leaguesClosedSeen=0;private var rowsBeforeExpand=0;private var rowsAfterExpand=0"
-        val varsNew = varsAnchor + ";private var detailLoadRequested=0;private var detailPageStarted=0;private var detailPageFinished=0;private var detailLoadErrors=0;private var detailLastUrl=\"\";private var historyRowsSeen=0;private var historyScoredSeen=0;private var historySideMatched=0"
-        if (!s.contains(varsAnchor)) error("diagnostic vars anchor not found")
-        s = s.replace(varsAnchor, varsNew)
-
-        val webAnchor = "detailWeb=WebView(this).apply{visibility=View.INVISIBLE};historyWeb=WebView(this).apply{visibility=View.INVISIBLE}"
-        val webNew = "detailWeb=WebView(this).apply{visibility=View.VISIBLE;alpha=0f};historyWeb=WebView(this).apply{visibility=View.VISIBLE;alpha=0f}"
-        if (!s.contains(webAnchor)) error("hidden webviews anchor not found")
-        s = s.replace(webAnchor, webNew)
-
-        val detailClientRx = Regex("        detailWeb\\.webViewClient=object:WebViewClient\\(\\)\\{.*?\\n        historyWeb\\.webViewClient=", RegexOption.DOT_MATCHES_ALL)
-        val detailClientNew = """        detailWeb.webViewClient=object:WebViewClient(){
-            override fun onPageStarted(view:WebView?,url:String?,favicon:android.graphics.Bitmap?){super.onPageStarted(view,url,favicon);detailPageStarted++;detailLastUrl=url?:"";runOnUiThread{updateStatus()}}
-            override fun onPageFinished(view:WebView?,url:String?){super.onPageFinished(view,url);detailPageFinished++;detailLastUrl=url?:"";val key=currentDetailKey?:return;val gen=detailGeneration;val u=url?:"";if(u.contains("/quote/quote-1x2/")){handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},1200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},3200);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},6000)}else{handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)openOddsTab()},800);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},4500)}}
-            override fun onReceivedError(view:WebView?,request:android.webkit.WebResourceRequest?,error:android.webkit.WebResourceError?){super.onReceivedError(view,request,error);if(request?.isForMainFrame==true){detailLoadErrors++;detailLastUrl=request.url?.toString()?:"";runOnUiThread{updateStatus()}}}
-        }
-        historyWeb.webViewClient="""
-        if (!detailClientRx.containsMatchIn(s)) error("detail web client not found")
-        s = detailClientRx.replaceFirst(s, Regex.escapeReplacement(detailClientNew))
-
-        val histRx = Regex("    private fun historyJs\\(finalAttempt:Boolean\\):String\\{.*?\\n    \\}", RegexOption.DOT_MATCHES_ALL)
-        val histNew = """    private fun historyJs(finalAttempt:Boolean):String{
-        val key=currentHistoryKey?:return "'no-key'";val m=matches[key]?:return "'no-match'";val team=if(historyPhase=="HOME")m.home else m.away;val teamUrl=if(historyPhase=="HOME")m.homeUrl else m.awayUrl;val targetId=teamUrl.trimEnd('/').substringAfterLast('/');val fin=if(finalAttempt)"true" else "false"
-        return """(function(){function txt(e){return e?(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim():'';}function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();}function score(r,sel){const e=r.querySelector(sel);const x=txt(e);return /^\\d+$/.test(x)?parseInt(x):-1;}const target=norm('${jsEscape(team)}'),targetId='${jsEscape(targetId)}',phase='$historyPhase',rows=[...document.querySelectorAll('.event__match[data-event-row=\\"true\\"],.event__match')],out=[];let scored=0,sideMatched=0;const debug=[];for(const r of rows){const he=r.querySelector('.event__homeParticipant,[class*=\\"homeParticipant\\"]'),ae=r.querySelector('.event__awayParticipant,[class*=\\"awayParticipant\\"]');const home=txt(he),away=txt(ae);if(!home||!away)continue;let hg=score(r,'.event__score--home,[class*=\\"score--home\\"]'),ag=score(r,'.event__score--away,[class*=\\"score--away\\"]');if(hg<0||ag<0){const sc=[...r.querySelectorAll('[class*=\\"event__score\\"],[class*=\\"score\\"]')].map(txt).filter(x=>/^\\d+$/.test(x));if(sc.length>=2){hg=parseInt(sc[0]);ag=parseInt(sc[1]);}}if(hg<0||ag<0)continue;scored++;const homeHref=(he?.closest('a')?.getAttribute('href')||he?.querySelector('a')?.getAttribute('href')||'');const awayHref=(ae?.closest('a')?.getAttribute('href')||ae?.querySelector('a')?.getAttribute('href')||'');const homeById=targetId&&homeHref.includes(targetId),awayById=targetId&&awayHref.includes(targetId);const homeByName=norm(home)===target||norm(home).startsWith(target)||target.startsWith(norm(home));const awayByName=norm(away)===target||norm(away).startsWith(target)||target.startsWith(norm(away));const sideOk=phase==='HOME'?(homeById||homeByName):(awayById||awayByName);if(debug.length<8)debug.push((home+' '+hg+'-'+ag+' '+away+' | H:'+homeHref+' | A:'+awayHref).slice(0,320));if(!sideOk)continue;sideMatched++;out.push({home,away,hg,ag,row:txt(r).slice(0,300)});if(out.length>=3)break;}if(out.length<3&&!$fin){window.__dsMore152=(window.__dsMore152||0);if(window.__dsMore152<3){const b=[...document.querySelectorAll('button,a,[role=\\"button\\"]')].find(e=>/mostra piu incontri|mostra più incontri|show more matches|carica altri|load more/i.test(txt(e)));if(b){window.__dsMore152++;try{b.click();}catch(e){}}}}const p={phase,final:$fin,matches:out,title:document.title||'',url:location.href,rows:rows.length,scored,sideMatched,target,targetId,sample:(out.length?out.map(x=>x.row).join(' || '):debug.join(' || ')).slice(0,1800)};try{DirettaScanner.onHistory(JSON.stringify(p));}catch(e){}return 'ok';})();"""
-    }"""
-        if (!histRx.containsMatchIn(s)) error("historyJs not found")
-        s = histRx.replaceFirst(s, Regex.escapeReplacement(histNew))
-
-        val onHistNeedle = "        @JavascriptInterface fun onHistory(json:String){try{val o=JSONObject(json);val key=currentHistoryKey?:return;val phase=o.optString(\"phase\");if(phase!=historyPhase)return;val arr=o.optJSONArray(\"matches\")?:JSONArray();val fin=o.optBoolean(\"final\",false);if(arr.length()<3&&!fin)return;val m=matches[key]?:return;if(arr.length()<3){m.historyState=\"INSUFFICIENT\";m.historyNote=\"$phase: solo ${'$'}{arr.length()} partite\";historyUnavailable++;finishHistoryMatch();return};"
-        val onHistNew = "        @JavascriptInterface fun onHistory(json:String){try{val o=JSONObject(json);val key=currentHistoryKey?:return;val phase=o.optString(\"phase\");if(phase!=historyPhase)return;historyRowsSeen=maxOf(historyRowsSeen,o.optInt(\"rows\",0));historyScoredSeen=maxOf(historyScoredSeen,o.optInt(\"scored\",0));historySideMatched=maxOf(historySideMatched,o.optInt(\"sideMatched\",0));val arr=o.optJSONArray(\"matches\")?:JSONArray();val fin=o.optBoolean(\"final\",false);if(arr.length()<3&&!fin)return;val m=matches[key]?:return;if(arr.length()<3){m.historyState=\"INSUFFICIENT\";m.historyNote=\"$phase: solo ${'$'}{arr.length()} partite (righe ${'$'}{o.optInt(\"rows\",0)}, concluse ${'$'}{o.optInt(\"scored\",0)}, lato ${'$'}{o.optInt(\"sideMatched\",0)})\";if(firstHistoryDiagnostic.isBlank())firstHistoryDiagnostic=\"Partita: ${'$'}{m.home} vs ${'$'}{m.away}\\nFase: ${'$'}phase\\nTarget: ${'$'}{o.optString(\"target\")} · ID ${'$'}{o.optString(\"targetId\")}\\nRighe: ${'$'}{o.optInt(\"rows\",0)} · concluse: ${'$'}{o.optInt(\"scored\",0)} · lato corretto: ${'$'}{o.optInt(\"sideMatched\",0)}\\nPagina: ${'$'}{o.optString(\"url\")}\\nCampione: ${'$'}{o.optString(\"sample\").take(1200)}\";historyUnavailable++;finishHistoryMatch();return};"
-        if (!s.contains(onHistNeedle)) error("onHistory anchor not found")
-        s = s.replace(onHistNeedle, onHistNew)
-
         val oldClick = "        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600)}"
-        val newClick = "        scanBtn.setOnClickListener{prepareDetailWebForScan();extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600);handler.postDelayed({forceStartDetailQueue()},5200);handler.postDelayed({forceStartDetailQueue()},7500);handler.postDelayed({forceStartDetailQueue()},11000)}"
+        val newClick = "        scanBtn.setOnClickListener{resetDetailEngineForScan();extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600);handler.postDelayed({forceStartDetailQueue()},5200);handler.postDelayed({forceStartDetailQueue()},7000);handler.postDelayed({forceStartDetailQueue()},10000)}"
         if (!s.contains(oldClick)) error("scan listener not found")
         s = s.replace(oldClick, newClick)
 
-        val startAnchor = "    private fun startDetailQueue(){synchronized(matches){matches.forEach{(k,m)->if(inSelectedRange(m.time)&&!m.attempted&&!detailQueue.contains(k)&&currentDetailKey!=k)detailQueue.add(k)}};processNextDetail()}"
-        val startNew = startAnchor + "\n    private fun prepareDetailWebForScan(){currentDetailKey=null;detailGeneration++;detailQueue.clear();detailWeb.stopLoading();detailWeb.clearHistory();detailWeb.loadUrl(\"about:blank\")}\n    private fun forceStartDetailQueue(){runOnUiThread{if(currentDetailKey==null){if(detailQueue.isEmpty())startDetailQueue() else processNextDetail()}}}"
-        if (!s.contains(startAnchor)) error("startDetailQueue not found")
-        s = s.replace(startAnchor, startNew)
+        val queueAnchor = "    private fun startDetailQueue(){synchronized(matches){matches.forEach{(k,m)->if(inSelectedRange(m.time)&&!m.attempted&&!detailQueue.contains(k)&&currentDetailKey!=k)detailQueue.add(k)}};processNextDetail()}"
+        val queueNew = queueAnchor + "\n    private fun resetDetailEngineForScan(){currentDetailKey=null;detailGeneration++;detailQueue.clear();detailWeb.stopLoading();detailWeb.loadUrl(\"about:blank\")}\n    private fun forceStartDetailQueue(){if(currentDetailKey==null){if(detailQueue.isEmpty())startDetailQueue() else processNextDetail()}}"
+        if (!s.contains(queueAnchor)) error("detail queue anchor not found")
+        s = s.replace(queueAnchor, queueNew)
 
-        val procRx = Regex("    private fun processNextDetail\\(\\)\\{.*?handler\\.postDelayed\\(\\{if\\(currentDetailKey==key&&detailGeneration==gen\\)extractDetailSnai\\(true\\)\\},15000\\)\\}", RegexOption.DOT_MATCHES_ALL)
-        val procNew = """    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;val gen=detailGeneration;val total=detailsAttempted+detailQueue.size+1;status.text="SNAI ${'$'}{detailsAttempted+1}/${'$'}total · ${'$'}{m.time} ${'$'}{m.home} vs ${'$'}{m.away}";val base=m.url.substringBefore("?").trimEnd('/');val query=m.url.substringAfter("?","");val qurl=if(base.contains("/quote/"))m.url else base+"/quote/quote-1x2/finale/"+(if(query.isNotBlank())"?"+query else "");detailLoadRequested++;detailLastUrl=qurl;detailWeb.post{if(currentDetailKey==key&&detailGeneration==gen)detailWeb.loadUrl(qurl)};handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},8500);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},15000)}"""
-        if (!procRx.containsMatchIn(s)) error("process detail not found")
-        s = procRx.replaceFirst(s, Regex.escapeReplacement(procNew))
+        val varsAnchor = "    private var leagueHeadersSeen=0;private var leaguesClosedSeen=0;private var rowsBeforeExpand=0;private var rowsAfterExpand=0"
+        val varsNew = varsAnchor + ";private var historyRowsSeen=0;private var historyScoredSeen=0;private var historySideMatched=0"
+        if (!s.contains(varsAnchor)) error("diagnostic vars not found")
+        s = s.replace(varsAnchor, varsNew)
+
+        val oldHistHead = "        val key=currentHistoryKey?:return \"'no-key'\";val m=matches[key]?:return \"'no-match'\";val team=if(historyPhase==\"HOME\")m.home else m.away;val fin=if(finalAttempt)\"true\" else \"false\""
+        val newHistHead = "        val key=currentHistoryKey?:return \"'no-key'\";val m=matches[key]?:return \"'no-match'\";val team=if(historyPhase==\"HOME\")m.home else m.away;val teamUrl=if(historyPhase==\"HOME\")m.homeUrl else m.awayUrl;val targetId=teamUrl.trimEnd('/').substringAfterLast('/');val fin=if(finalAttempt)\"true\" else \"false\""
+        if (!s.contains(oldHistHead)) error("history head not found")
+        s = s.replace(oldHistHead, newHistHead, true)
+
+        val oldTarget = "const target=norm('\${jsEscape(team)}'),phase='\$historyPhase',rows=[...document.querySelectorAll('.event__match[data-event-row=\\\"true\\\"],.event__match')],out=[];"
+        val newTarget = "const target=norm('\${jsEscape(team)}'),targetId='\${jsEscape(targetId)}',phase='\$historyPhase',rows=[...document.querySelectorAll('.event__match[data-event-row=\\\"true\\\"],.event__match')],out=[];let scored=0,sideMatched=0;"
+        if (!s.contains(oldTarget)) error("history target block not found")
+        s = s.replace(oldTarget, newTarget, true)
+
+        val oldSide = "if((phase==='HOME'?norm(home):norm(away))!==target)continue;out.push"
+        val newSide = "scored++;const homeHref=(he&&he.closest('a')?he.closest('a').getAttribute('href'):'')||(he&&he.querySelector('a')?he.querySelector('a').getAttribute('href'):'')||'';const awayHref=(ae&&ae.closest('a')?ae.closest('a').getAttribute('href'):'')||(ae&&ae.querySelector('a')?ae.querySelector('a').getAttribute('href'):'')||'';const homeById=!!targetId&&homeHref.includes(targetId),awayById=!!targetId&&awayHref.includes(targetId);const nh=norm(home),na=norm(away);const homeByName=nh===target||nh.startsWith(target)||target.startsWith(nh);const awayByName=na===target||na.startsWith(target)||target.startsWith(na);const sideOk=phase==='HOME'?(homeById||homeByName):(awayById||awayByName);if(!sideOk)continue;sideMatched++;out.push"
+        if (!s.contains(oldSide)) error("history side matcher not found")
+        s = s.replace(oldSide, newSide, true)
+
+        s = s.replace("if(out.length<3&&!window.__dsMore140){", "if(out.length<3&&(window.__dsMore152||0)<3){", true)
+        s = s.replace("window.__dsMore140=true;", "window.__dsMore152=(window.__dsMore152||0)+1;", true)
+
+        val oldPayload = "const p={phase,final:\$fin,matches:out,title:document.title||'',url:location.href,rows:rows.length,sample:"
+        val newPayload = "const p={phase,final:\$fin,matches:out,title:document.title||'',url:location.href,rows:rows.length,scored,sideMatched,targetId,sample:"
+        if (!s.contains(oldPayload)) error("history payload not found")
+        s = s.replace(oldPayload, newPayload, true)
+
+        val oldHistBridge = "val phase=o.optString(\"phase\");if(phase!=historyPhase)return;val arr=o.optJSONArray(\"matches\")?:JSONArray();"
+        val newHistBridge = "val phase=o.optString(\"phase\");if(phase!=historyPhase)return;historyRowsSeen=maxOf(historyRowsSeen,o.optInt(\"rows\",0));historyScoredSeen=maxOf(historyScoredSeen,o.optInt(\"scored\",0));historySideMatched=maxOf(historySideMatched,o.optInt(\"sideMatched\",0));val arr=o.optJSONArray(\"matches\")?:JSONArray();"
+        if (!s.contains(oldHistBridge)) error("history bridge not found")
+        s = s.replace(oldHistBridge, newHistBridge, true)
+
+        val oldInsufficient = "m.historyState=\"INSUFFICIENT\";m.historyNote=\"\$phase: solo \${arr.length()} partite\";historyUnavailable++;"
+        val newInsufficient = "m.historyState=\"INSUFFICIENT\";m.historyNote=phase+\": solo \"+arr.length()+\" partite (righe \"+o.optInt(\"rows\",0)+\", concluse \"+o.optInt(\"scored\",0)+\", lato \"+o.optInt(\"sideMatched\",0)+\")\";if(firstHistoryDiagnostic.isBlank())firstHistoryDiagnostic=\"Partita: \"+m.home+\" vs \"+m.away+\"\\nFase: \"+phase+\"\\nRighe: \"+o.optInt(\"rows\",0)+\" · concluse: \"+o.optInt(\"scored\",0)+\" · lato corretto: \"+o.optInt(\"sideMatched\",0)+\"\\nTeam ID: \"+o.optString(\"targetId\")+\"\\nPagina: \"+o.optString(\"url\")+\"\\nCampione: \"+o.optString(\"sample\").take(1000);historyUnavailable++;"
+        if (!s.contains(oldInsufficient)) error("insufficient history block not found")
+        s = s.replace(oldInsufficient, newInsufficient, true)
+
+        val reportNeedle = "Schede QUOTE: \$oddsTabsOpened · dettagli: \$detailsAttempted · SNAI: \$detailsWithSnai · senza SNAI: \$detailsWithoutSnai\\nStorici completati:"
+        val reportNew = "Schede QUOTE: \$oddsTabsOpened · dettagli: \$detailsAttempted · SNAI: \$detailsWithSnai · senza SNAI: \$detailsWithoutSnai\\nSTORICO DOM: righe max \$historyRowsSeen · concluse max \$historyScoredSeen · lato corretto max \$historySideMatched\\nStorici completati:"
+        if (!s.contains(reportNeedle)) error("report history diagnostic anchor not found")
+        s = s.replace(reportNeedle, reportNew, true)
 
         s = s.replace("AUTO-OPEN: intestazioni ${'$'}leagueHeadersSeen", "AUTO-OPEN: controlli campionato ${'$'}leagueHeadersSeen")
         s = s.replace("FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa)", "FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa · solo partite non iniziate)")
-
-        val reportNeedle = "Schede QUOTE: ${'$'}oddsTabsOpened · dettagli: ${'$'}detailsAttempted · SNAI: ${'$'}detailsWithSnai · senza SNAI: ${'$'}detailsWithoutSnai"
-        val reportNew = reportNeedle + "\\nDETAIL WEB: richieste ${'$'}detailLoadRequested · started ${'$'}detailPageStarted · finished ${'$'}detailPageFinished · errori ${'$'}detailLoadErrors\\nSTORICO DOM: righe max ${'$'}historyRowsSeen · concluse max ${'$'}historyScoredSeen · lato corretto max ${'$'}historySideMatched"
-        if (!s.contains(reportNeedle)) error("report detail diagnostics not found")
-        s = s.replace(reportNeedle, reportNew)
 
         src.writeText(s)
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(patchV0152)
-}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(patchV0152) }
 
-dependencies {
-    implementation("androidx.appcompat:appcompat:1.7.0")
-}
+dependencies { implementation("androidx.appcompat:appcompat:1.7.0") }
