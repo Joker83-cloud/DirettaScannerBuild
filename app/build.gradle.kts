@@ -11,8 +11,8 @@ android {
         applicationId = "com.joker.direttascannerbuild"
         minSdk = 24
         targetSdk = 35
-        versionCode = 151
-        versionName = "0.15.1-detail-web-fix"
+        versionCode = 152
+        versionName = "0.15.2-history-fix"
     }
 
     signingConfigs {
@@ -38,22 +38,22 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
-val patchV0151 = tasks.register("patchV0151") {
+val patchV0152 = tasks.register("patchV0152") {
     doLast {
         val src = file("src/main/java/com/joker/direttascannerbuild/MainActivity.kt")
         var s = src.readText()
 
-        s = s.replace("v0.14.7 REAL AUTO-OPEN", "v0.15.1 DETAIL WEB FIX")
-            .replace("DirettaScanner/0.14.7-real-auto-open", "DirettaScanner/0.15.1-detail-web-fix")
+        s = s.replace("v0.14.7 REAL AUTO-OPEN", "v0.15.2 HISTORY FIX")
+            .replace("DirettaScanner/0.14.7-real-auto-open", "DirettaScanner/0.15.2-history-fix")
 
         val expandRx = Regex("function expand\\(\\)\\{.*?return \\{clicked,headers:headers.length,closed,before\\};\\}", RegexOption.DOT_MATCHES_ALL)
-        val newExpand = """function expand(){const before=document.querySelectorAll('.event__match[data-event-row=\"true\"],.event__match').length;if(!window.__dsOpened151)window.__dsOpened151=new WeakSet();let closed=0,clicked=0;const specific=[...document.querySelectorAll('.wclIcon__leagueShowMoreCont,[class*=\"leagueShowMoreCont\"],[class*=\"leagueShowMore\"]')].filter(e=>!e.closest('.event__match'));for(const c of specific){if(window.__dsOpened151.has(c))continue;const trg=c.closest('button,[role=\"button\"]')||c.querySelector('button,[role=\"button\"]')||c;const aria=(trg.getAttribute&&trg.getAttribute('aria-expanded'))||'';const cls=(String(trg.className||'')+' '+String(c.className||'')).toLowerCase();const label=((trg.getAttribute&&trg.getAttribute('aria-label'))||'')+' '+((trg.getAttribute&&trg.getAttribute('title'))||'');const likelyClosed=aria==='false'||/closed|collapsed|showmore|leagueshowmore/.test(cls)||/show|display|mostra|espandi/i.test(label);if(!likelyClosed)continue;closed++;try{trg.click();window.__dsOpened151.add(c);clicked++;}catch(e){}}return {clicked,headers:specific.length,closed,before};}"""
-        if (!expandRx.containsMatchIn(s)) error("v0.14.7 expand function not found")
+        val newExpand = """function expand(){const before=document.querySelectorAll('.event__match[data-event-row=\"true\"],.event__match').length;if(!window.__dsOpened152)window.__dsOpened152=new WeakSet();let closed=0,clicked=0;const specific=[...document.querySelectorAll('.wclIcon__leagueShowMoreCont,[class*=\"leagueShowMoreCont\"],[class*=\"leagueShowMore\"]')].filter(e=>!e.closest('.event__match'));for(const c of specific){if(window.__dsOpened152.has(c))continue;const trg=c.closest('button,[role=\"button\"]')||c.querySelector('button,[role=\"button\"]')||c;const aria=(trg.getAttribute&&trg.getAttribute('aria-expanded'))||'';const cls=(String(trg.className||'')+' '+String(c.className||'')).toLowerCase();const label=((trg.getAttribute&&trg.getAttribute('aria-label'))||'')+' '+((trg.getAttribute&&trg.getAttribute('title'))||'');const likelyClosed=aria==='false'||/closed|collapsed|showmore|leagueshowmore/.test(cls)||/show|display|mostra|espandi/i.test(label);if(!likelyClosed)continue;closed++;try{trg.click();window.__dsOpened152.add(c);clicked++;}catch(e){}}return {clicked,headers:specific.length,closed,before};}"""
+        if (!expandRx.containsMatchIn(s)) error("expand function not found")
         s = expandRx.replaceFirst(s, Regex.escapeReplacement(newExpand))
 
         val oldRange = "    private fun inSelectedRange(t:String):Boolean{val f=mins(fromSpinner.selectedItem?.toString()?:\"00:00\");val z=mins(toSpinner.selectedItem?.toString()?:\"23:59\");val x=mins(t);return if(x<0||f<0||z<0)false else if(f<=z)x>=f&&x<z else x>=f||x<z}"
         val newRange = "    private fun currentMinute():Int{val c=java.util.Calendar.getInstance();return c.get(java.util.Calendar.HOUR_OF_DAY)*60+c.get(java.util.Calendar.MINUTE)}\n    private fun inSelectedRange(t:String):Boolean{val f=mins(fromSpinner.selectedItem?.toString()?:\"00:00\");val z=mins(toSpinner.selectedItem?.toString()?:\"23:59\");val x=mins(t);if(x<0||f<0||z<0)return false;val inside=if(f<=z)x>=f&&x<z else x>=f||x<z;return inside&&x>currentMinute()}"
-        if (!s.contains(oldRange)) error("v0.14.7 range function not found")
+        if (!s.contains(oldRange)) error("range function not found")
         s = s.replace(oldRange, newRange)
 
         val oldDiagBridge = "        @JavascriptInterface fun onExpandDiag(headers:Int,closed:Int,clicked:Int,before:Int,after:Int){synchronized(matches){leagueHeadersSeen=maxOf(leagueHeadersSeen,headers);leaguesClosedSeen=maxOf(leaguesClosedSeen,closed);rowsBeforeExpand=maxOf(rowsBeforeExpand,before);rowsAfterExpand=maxOf(rowsAfterExpand,after)}}"
@@ -62,8 +62,8 @@ val patchV0151 = tasks.register("patchV0151") {
         s = s.replace(oldDiagBridge, newDiagBridge)
 
         val varsAnchor = "private var leagueHeadersSeen=0;private var leaguesClosedSeen=0;private var rowsBeforeExpand=0;private var rowsAfterExpand=0"
-        val varsNew = varsAnchor + ";private var detailLoadRequested=0;private var detailPageStarted=0;private var detailPageFinished=0;private var detailLoadErrors=0;private var detailLastUrl=\"\""
-        if (!s.contains(varsAnchor)) error("detail diagnostic vars anchor not found")
+        val varsNew = varsAnchor + ";private var detailLoadRequested=0;private var detailPageStarted=0;private var detailPageFinished=0;private var detailLoadErrors=0;private var detailLastUrl=\"\";private var historyRowsSeen=0;private var historyScoredSeen=0;private var historySideMatched=0"
+        if (!s.contains(varsAnchor)) error("diagnostic vars anchor not found")
         s = s.replace(varsAnchor, varsNew)
 
         val webAnchor = "detailWeb=WebView(this).apply{visibility=View.INVISIBLE};historyWeb=WebView(this).apply{visibility=View.INVISIBLE}"
@@ -80,6 +80,19 @@ val patchV0151 = tasks.register("patchV0151") {
         historyWeb.webViewClient="""
         if (!detailClientRx.containsMatchIn(s)) error("detail web client not found")
         s = detailClientRx.replaceFirst(s, Regex.escapeReplacement(detailClientNew))
+
+        val histRx = Regex("    private fun historyJs\\(finalAttempt:Boolean\\):String\\{.*?\\n    \\}", RegexOption.DOT_MATCHES_ALL)
+        val histNew = """    private fun historyJs(finalAttempt:Boolean):String{
+        val key=currentHistoryKey?:return "'no-key'";val m=matches[key]?:return "'no-match'";val team=if(historyPhase=="HOME")m.home else m.away;val teamUrl=if(historyPhase=="HOME")m.homeUrl else m.awayUrl;val targetId=teamUrl.trimEnd('/').substringAfterLast('/');val fin=if(finalAttempt)"true" else "false"
+        return """(function(){function txt(e){return e?(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim():'';}function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();}function score(r,sel){const e=r.querySelector(sel);const x=txt(e);return /^\\d+$/.test(x)?parseInt(x):-1;}const target=norm('${jsEscape(team)}'),targetId='${jsEscape(targetId)}',phase='$historyPhase',rows=[...document.querySelectorAll('.event__match[data-event-row=\\"true\\"],.event__match')],out=[];let scored=0,sideMatched=0;const debug=[];for(const r of rows){const he=r.querySelector('.event__homeParticipant,[class*=\\"homeParticipant\\"]'),ae=r.querySelector('.event__awayParticipant,[class*=\\"awayParticipant\\"]');const home=txt(he),away=txt(ae);if(!home||!away)continue;let hg=score(r,'.event__score--home,[class*=\\"score--home\\"]'),ag=score(r,'.event__score--away,[class*=\\"score--away\\"]');if(hg<0||ag<0){const sc=[...r.querySelectorAll('[class*=\\"event__score\\"],[class*=\\"score\\"]')].map(txt).filter(x=>/^\\d+$/.test(x));if(sc.length>=2){hg=parseInt(sc[0]);ag=parseInt(sc[1]);}}if(hg<0||ag<0)continue;scored++;const homeHref=(he?.closest('a')?.getAttribute('href')||he?.querySelector('a')?.getAttribute('href')||'');const awayHref=(ae?.closest('a')?.getAttribute('href')||ae?.querySelector('a')?.getAttribute('href')||'');const homeById=targetId&&homeHref.includes(targetId),awayById=targetId&&awayHref.includes(targetId);const homeByName=norm(home)===target||norm(home).startsWith(target)||target.startsWith(norm(home));const awayByName=norm(away)===target||norm(away).startsWith(target)||target.startsWith(norm(away));const sideOk=phase==='HOME'?(homeById||homeByName):(awayById||awayByName);if(debug.length<8)debug.push((home+' '+hg+'-'+ag+' '+away+' | H:'+homeHref+' | A:'+awayHref).slice(0,320));if(!sideOk)continue;sideMatched++;out.push({home,away,hg,ag,row:txt(r).slice(0,300)});if(out.length>=3)break;}if(out.length<3&&!$fin){window.__dsMore152=(window.__dsMore152||0);if(window.__dsMore152<3){const b=[...document.querySelectorAll('button,a,[role=\\"button\\"]')].find(e=>/mostra piu incontri|mostra più incontri|show more matches|carica altri|load more/i.test(txt(e)));if(b){window.__dsMore152++;try{b.click();}catch(e){}}}}const p={phase,final:$fin,matches:out,title:document.title||'',url:location.href,rows:rows.length,scored,sideMatched,target,targetId,sample:(out.length?out.map(x=>x.row).join(' || '):debug.join(' || ')).slice(0,1800)};try{DirettaScanner.onHistory(JSON.stringify(p));}catch(e){}return 'ok';})();"""
+    }"""
+        if (!histRx.containsMatchIn(s)) error("historyJs not found")
+        s = histRx.replaceFirst(s, Regex.escapeReplacement(histNew))
+
+        val onHistNeedle = "        @JavascriptInterface fun onHistory(json:String){try{val o=JSONObject(json);val key=currentHistoryKey?:return;val phase=o.optString(\"phase\");if(phase!=historyPhase)return;val arr=o.optJSONArray(\"matches\")?:JSONArray();val fin=o.optBoolean(\"final\",false);if(arr.length()<3&&!fin)return;val m=matches[key]?:return;if(arr.length()<3){m.historyState=\"INSUFFICIENT\";m.historyNote=\"$phase: solo ${'$'}{arr.length()} partite\";historyUnavailable++;finishHistoryMatch();return};"
+        val onHistNew = "        @JavascriptInterface fun onHistory(json:String){try{val o=JSONObject(json);val key=currentHistoryKey?:return;val phase=o.optString(\"phase\");if(phase!=historyPhase)return;historyRowsSeen=maxOf(historyRowsSeen,o.optInt(\"rows\",0));historyScoredSeen=maxOf(historyScoredSeen,o.optInt(\"scored\",0));historySideMatched=maxOf(historySideMatched,o.optInt(\"sideMatched\",0));val arr=o.optJSONArray(\"matches\")?:JSONArray();val fin=o.optBoolean(\"final\",false);if(arr.length()<3&&!fin)return;val m=matches[key]?:return;if(arr.length()<3){m.historyState=\"INSUFFICIENT\";m.historyNote=\"$phase: solo ${'$'}{arr.length()} partite (righe ${'$'}{o.optInt(\"rows\",0)}, concluse ${'$'}{o.optInt(\"scored\",0)}, lato ${'$'}{o.optInt(\"sideMatched\",0)})\";if(firstHistoryDiagnostic.isBlank())firstHistoryDiagnostic=\"Partita: ${'$'}{m.home} vs ${'$'}{m.away}\\nFase: ${'$'}phase\\nTarget: ${'$'}{o.optString(\"target\")} · ID ${'$'}{o.optString(\"targetId\")}\\nRighe: ${'$'}{o.optInt(\"rows\",0)} · concluse: ${'$'}{o.optInt(\"scored\",0)} · lato corretto: ${'$'}{o.optInt(\"sideMatched\",0)}\\nPagina: ${'$'}{o.optString(\"url\")}\\nCampione: ${'$'}{o.optString(\"sample\").take(1200)}\";historyUnavailable++;finishHistoryMatch();return};"
+        if (!s.contains(onHistNeedle)) error("onHistory anchor not found")
+        s = s.replace(onHistNeedle, onHistNew)
 
         val oldClick = "        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600)}"
         val newClick = "        scanBtn.setOnClickListener{prepareDetailWebForScan();extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600);handler.postDelayed({forceStartDetailQueue()},5200);handler.postDelayed({forceStartDetailQueue()},7500);handler.postDelayed({forceStartDetailQueue()},11000)}"
@@ -100,7 +113,7 @@ val patchV0151 = tasks.register("patchV0151") {
         s = s.replace("FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa)", "FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa · solo partite non iniziate)")
 
         val reportNeedle = "Schede QUOTE: ${'$'}oddsTabsOpened · dettagli: ${'$'}detailsAttempted · SNAI: ${'$'}detailsWithSnai · senza SNAI: ${'$'}detailsWithoutSnai"
-        val reportNew = reportNeedle + "\\nDETAIL WEB: richieste ${'$'}detailLoadRequested · started ${'$'}detailPageStarted · finished ${'$'}detailPageFinished · errori ${'$'}detailLoadErrors · ultima URL ${'$'}detailLastUrl"
+        val reportNew = reportNeedle + "\\nDETAIL WEB: richieste ${'$'}detailLoadRequested · started ${'$'}detailPageStarted · finished ${'$'}detailPageFinished · errori ${'$'}detailLoadErrors\\nSTORICO DOM: righe max ${'$'}historyRowsSeen · concluse max ${'$'}historyScoredSeen · lato corretto max ${'$'}historySideMatched"
         if (!s.contains(reportNeedle)) error("report detail diagnostics not found")
         s = s.replace(reportNeedle, reportNew)
 
@@ -109,7 +122,7 @@ val patchV0151 = tasks.register("patchV0151") {
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(patchV0151)
+    dependsOn(patchV0152)
 }
 
 dependencies {
