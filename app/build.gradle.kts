@@ -69,48 +69,18 @@ val patchV0152 = tasks.register("patchV0152") {
         if (!s.contains(queueAnchor)) error("detail queue anchor not found")
         s = s.replace(queueAnchor, queueNew)
 
-        val varsAnchor = "    private var leagueHeadersSeen=0;private var leaguesClosedSeen=0;private var rowsBeforeExpand=0;private var rowsAfterExpand=0"
-        val varsNew = varsAnchor + ";private var historyRowsSeen=0;private var historyScoredSeen=0;private var historySideMatched=0"
-        if (!s.contains(varsAnchor)) error("diagnostic vars not found")
-        s = s.replace(varsAnchor, varsNew)
-
-        val oldHistHead = "        val key=currentHistoryKey?:return \"'no-key'\";val m=matches[key]?:return \"'no-match'\";val team=if(historyPhase==\"HOME\")m.home else m.away;val fin=if(finalAttempt)\"true\" else \"false\""
-        val newHistHead = "        val key=currentHistoryKey?:return \"'no-key'\";val m=matches[key]?:return \"'no-match'\";val team=if(historyPhase==\"HOME\")m.home else m.away;val teamUrl=if(historyPhase==\"HOME\")m.homeUrl else m.awayUrl;val targetId=teamUrl.trimEnd('/').substringAfterLast('/');val fin=if(finalAttempt)\"true\" else \"false\""
-        if (!s.contains(oldHistHead)) error("history head not found")
-        s = s.replace(oldHistHead, newHistHead, true)
-
-        val oldTarget = "const target=norm('\${jsEscape(team)}'),phase='\$historyPhase',rows=[...document.querySelectorAll('.event__match[data-event-row=\\\"true\\\"],.event__match')],out=[];"
-        val newTarget = "const target=norm('\${jsEscape(team)}'),targetId='\${jsEscape(targetId)}',phase='\$historyPhase',rows=[...document.querySelectorAll('.event__match[data-event-row=\\\"true\\\"],.event__match')],out=[];let scored=0,sideMatched=0;"
-        if (!s.contains(oldTarget)) error("history target block not found")
-        s = s.replace(oldTarget, newTarget, true)
-
-        val oldSide = "if((phase==='HOME'?norm(home):norm(away))!==target)continue;out.push"
-        val newSide = "scored++;const homeHref=(he&&he.closest('a')?he.closest('a').getAttribute('href'):'')||(he&&he.querySelector('a')?he.querySelector('a').getAttribute('href'):'')||'';const awayHref=(ae&&ae.closest('a')?ae.closest('a').getAttribute('href'):'')||(ae&&ae.querySelector('a')?ae.querySelector('a').getAttribute('href'):'')||'';const homeById=!!targetId&&homeHref.includes(targetId),awayById=!!targetId&&awayHref.includes(targetId);const nh=norm(home),na=norm(away);const homeByName=nh===target||nh.startsWith(target)||target.startsWith(nh);const awayByName=na===target||na.startsWith(target)||target.startsWith(na);const sideOk=phase==='HOME'?(homeById||homeByName):(awayById||awayByName);if(!sideOk)continue;sideMatched++;out.push"
-        if (!s.contains(oldSide)) error("history side matcher not found")
-        s = s.replace(oldSide, newSide, true)
+        val exactHistoryCheck = "if((phase==='HOME'?norm(home):norm(away))!==target)continue;out.push"
+        val relaxedHistoryCheck = "const side=phase==='HOME'?norm(home):norm(away);if(!(side===target||side.startsWith(target)||target.startsWith(side)))continue;out.push"
+        if (!s.contains(exactHistoryCheck)) error("history side check not found")
+        s = s.replace(exactHistoryCheck, relaxedHistoryCheck, true)
 
         s = s.replace("if(out.length<3&&!window.__dsMore140){", "if(out.length<3&&(window.__dsMore152||0)<3){", true)
         s = s.replace("window.__dsMore140=true;", "window.__dsMore152=(window.__dsMore152||0)+1;", true)
 
-        val oldPayload = "const p={phase,final:\$fin,matches:out,title:document.title||'',url:location.href,rows:rows.length,sample:"
-        val newPayload = "const p={phase,final:\$fin,matches:out,title:document.title||'',url:location.href,rows:rows.length,scored,sideMatched,targetId,sample:"
-        if (!s.contains(oldPayload)) error("history payload not found")
-        s = s.replace(oldPayload, newPayload, true)
-
-        val oldHistBridge = "val phase=o.optString(\"phase\");if(phase!=historyPhase)return;val arr=o.optJSONArray(\"matches\")?:JSONArray();"
-        val newHistBridge = "val phase=o.optString(\"phase\");if(phase!=historyPhase)return;historyRowsSeen=maxOf(historyRowsSeen,o.optInt(\"rows\",0));historyScoredSeen=maxOf(historyScoredSeen,o.optInt(\"scored\",0));historySideMatched=maxOf(historySideMatched,o.optInt(\"sideMatched\",0));val arr=o.optJSONArray(\"matches\")?:JSONArray();"
-        if (!s.contains(oldHistBridge)) error("history bridge not found")
-        s = s.replace(oldHistBridge, newHistBridge, true)
-
-        val oldInsufficient = "m.historyState=\"INSUFFICIENT\";m.historyNote=\"\$phase: solo \${arr.length()} partite\";historyUnavailable++;"
-        val newInsufficient = "m.historyState=\"INSUFFICIENT\";m.historyNote=phase+\": solo \"+arr.length()+\" partite (righe \"+o.optInt(\"rows\",0)+\", concluse \"+o.optInt(\"scored\",0)+\", lato \"+o.optInt(\"sideMatched\",0)+\")\";if(firstHistoryDiagnostic.isBlank())firstHistoryDiagnostic=\"Partita: \"+m.home+\" vs \"+m.away+\"\\nFase: \"+phase+\"\\nRighe: \"+o.optInt(\"rows\",0)+\" · concluse: \"+o.optInt(\"scored\",0)+\" · lato corretto: \"+o.optInt(\"sideMatched\",0)+\"\\nTeam ID: \"+o.optString(\"targetId\")+\"\\nPagina: \"+o.optString(\"url\")+\"\\nCampione: \"+o.optString(\"sample\").take(1000);historyUnavailable++;"
-        if (!s.contains(oldInsufficient)) error("insufficient history block not found")
+        val oldInsufficient = "m.historyNote=\"\$phase: solo \${arr.length()} partite\";"
+        val newInsufficient = "m.historyNote=phase+\": solo \"+arr.length()+\" partite · righe DOM \"+o.optInt(\"rows\",0);"
+        if (!s.contains(oldInsufficient)) error("history insufficient note not found")
         s = s.replace(oldInsufficient, newInsufficient, true)
-
-        val reportNeedle = "Schede QUOTE: \$oddsTabsOpened · dettagli: \$detailsAttempted · SNAI: \$detailsWithSnai · senza SNAI: \$detailsWithoutSnai\\nStorici completati:"
-        val reportNew = "Schede QUOTE: \$oddsTabsOpened · dettagli: \$detailsAttempted · SNAI: \$detailsWithSnai · senza SNAI: \$detailsWithoutSnai\\nSTORICO DOM: righe max \$historyRowsSeen · concluse max \$historyScoredSeen · lato corretto max \$historySideMatched\\nStorici completati:"
-        if (!s.contains(reportNeedle)) error("report history diagnostic anchor not found")
-        s = s.replace(reportNeedle, reportNew, true)
 
         s = s.replace("AUTO-OPEN: intestazioni ${'$'}leagueHeadersSeen", "AUTO-OPEN: controlli campionato ${'$'}leagueHeadersSeen")
         s = s.replace("FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa)", "FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa · solo partite non iniziate)")
