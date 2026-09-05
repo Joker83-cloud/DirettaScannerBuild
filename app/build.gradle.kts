@@ -11,8 +11,8 @@ android {
         applicationId = "com.joker.direttascannerbuild"
         minSdk = 24
         targetSdk = 35
-        versionCode = 149
-        versionName = "0.14.9-auto-open-verified-queue-watchdog"
+        versionCode = 150
+        versionName = "0.15.0-queue-fix"
     }
 
     signingConfigs {
@@ -38,16 +38,16 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
-val patchV0149 = tasks.register("patchV0149") {
+val patchV0150 = tasks.register("patchV0150") {
     doLast {
         val src = file("src/main/java/com/joker/direttascannerbuild/MainActivity.kt")
         var s = src.readText()
 
-        s = s.replace("v0.14.7 REAL AUTO-OPEN", "v0.14.9 AUTO-OPEN VERIFIED")
-            .replace("DirettaScanner/0.14.7-real-auto-open", "DirettaScanner/0.14.9-auto-open-verified")
+        s = s.replace("v0.14.7 REAL AUTO-OPEN", "v0.15.0 QUEUE FIX")
+            .replace("DirettaScanner/0.14.7-real-auto-open", "DirettaScanner/0.15.0-queue-fix")
 
         val expandRx = Regex("function expand\\(\\)\\{.*?return \\{clicked,headers:headers.length,closed,before\\};\\}", RegexOption.DOT_MATCHES_ALL)
-        val newExpand = """function expand(){const before=document.querySelectorAll('.event__match[data-event-row=\"true\"],.event__match').length;if(!window.__dsOpened149)window.__dsOpened149=new WeakSet();let closed=0,clicked=0;const specific=[...document.querySelectorAll('.wclIcon__leagueShowMoreCont,[class*=\"leagueShowMoreCont\"],[class*=\"leagueShowMore\"]')].filter(e=>!e.closest('.event__match'));for(const c of specific){if(window.__dsOpened149.has(c))continue;const trg=c.closest('button,[role=\"button\"]')||c.querySelector('button,[role=\"button\"]')||c;const aria=(trg.getAttribute&&trg.getAttribute('aria-expanded'))||'';const cls=(String(trg.className||'')+' '+String(c.className||'')).toLowerCase();const label=((trg.getAttribute&&trg.getAttribute('aria-label'))||'')+' '+((trg.getAttribute&&trg.getAttribute('title'))||'');const likelyClosed=aria==='false'||/closed|collapsed|showmore|leagueshowmore/.test(cls)||/show|display|mostra|espandi/i.test(label);if(!likelyClosed)continue;closed++;try{trg.click();window.__dsOpened149.add(c);clicked++;}catch(e){}}return {clicked,headers:specific.length,closed,before};}"""
+        val newExpand = """function expand(){const before=document.querySelectorAll('.event__match[data-event-row=\"true\"],.event__match').length;if(!window.__dsOpened150)window.__dsOpened150=new WeakSet();let closed=0,clicked=0;const specific=[...document.querySelectorAll('.wclIcon__leagueShowMoreCont,[class*=\"leagueShowMoreCont\"],[class*=\"leagueShowMore\"]')].filter(e=>!e.closest('.event__match'));for(const c of specific){if(window.__dsOpened150.has(c))continue;const trg=c.closest('button,[role=\"button\"]')||c.querySelector('button,[role=\"button\"]')||c;const aria=(trg.getAttribute&&trg.getAttribute('aria-expanded'))||'';const cls=(String(trg.className||'')+' '+String(c.className||'')).toLowerCase();const label=((trg.getAttribute&&trg.getAttribute('aria-label'))||'')+' '+((trg.getAttribute&&trg.getAttribute('title'))||'');const likelyClosed=aria==='false'||/closed|collapsed|showmore|leagueshowmore/.test(cls)||/show|display|mostra|espandi/i.test(label);if(!likelyClosed)continue;closed++;try{trg.click();window.__dsOpened150.add(c);clicked++;}catch(e){}}return {clicked,headers:specific.length,closed,before};}"""
         if (!expandRx.containsMatchIn(s)) error("v0.14.7 expand function not found")
         s = expandRx.replaceFirst(s, newExpand)
 
@@ -62,12 +62,12 @@ val patchV0149 = tasks.register("patchV0149") {
         s = s.replace(oldDiagBridge, newDiagBridge)
 
         val oldClick = "        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600)}"
-        val newClick = "        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600);handler.postDelayed({kickDetailQueue()},6000);handler.postDelayed({kickDetailQueue()},9000)}"
+        val newClick = "        scanBtn.setOnClickListener{resetDetailEngineForScan();extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600);handler.postDelayed({forceStartDetailQueue()},5200);handler.postDelayed({forceStartDetailQueue()},7000);handler.postDelayed({forceStartDetailQueue()},10000)}"
         if (!s.contains(oldClick)) error("scan listener not found")
         s = s.replace(oldClick, newClick)
 
         val anchor = "    private fun startDetailQueue(){synchronized(matches){matches.forEach{(k,m)->if(inSelectedRange(m.time)&&!m.attempted&&!detailQueue.contains(k)&&currentDetailKey!=k)detailQueue.add(k)}};processNextDetail()}"
-        val replacement = anchor + "\n    private fun kickDetailQueue(){if(currentDetailKey==null&&detailQueue.isNotEmpty())processNextDetail();else if(currentDetailKey==null){startDetailQueue()}}"
+        val replacement = anchor + "\n    private fun resetDetailEngineForScan(){currentDetailKey=null;detailGeneration++;detailQueue.clear();detailWeb.stopLoading();detailWeb.loadUrl(\"about:blank\")}\n    private fun forceStartDetailQueue(){if(currentDetailKey==null){if(detailQueue.isEmpty())startDetailQueue() else processNextDetail()}}"
         if (!s.contains(anchor)) error("startDetailQueue not found")
         s = s.replace(anchor, replacement)
 
@@ -79,7 +79,7 @@ val patchV0149 = tasks.register("patchV0149") {
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(patchV0149)
+    dependsOn(patchV0150)
 }
 
 dependencies {
