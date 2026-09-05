@@ -49,7 +49,7 @@ val patchV0151 = tasks.register("patchV0151") {
         val expandRx = Regex("function expand\\(\\)\\{.*?return \\{clicked,headers:headers.length,closed,before\\};\\}", RegexOption.DOT_MATCHES_ALL)
         val newExpand = """function expand(){const before=document.querySelectorAll('.event__match[data-event-row=\"true\"],.event__match').length;if(!window.__dsOpened151)window.__dsOpened151=new WeakSet();let closed=0,clicked=0;const specific=[...document.querySelectorAll('.wclIcon__leagueShowMoreCont,[class*=\"leagueShowMoreCont\"],[class*=\"leagueShowMore\"]')].filter(e=>!e.closest('.event__match'));for(const c of specific){if(window.__dsOpened151.has(c))continue;const trg=c.closest('button,[role=\"button\"]')||c.querySelector('button,[role=\"button\"]')||c;const aria=(trg.getAttribute&&trg.getAttribute('aria-expanded'))||'';const cls=(String(trg.className||'')+' '+String(c.className||'')).toLowerCase();const label=((trg.getAttribute&&trg.getAttribute('aria-label'))||'')+' '+((trg.getAttribute&&trg.getAttribute('title'))||'');const likelyClosed=aria==='false'||/closed|collapsed|showmore|leagueshowmore/.test(cls)||/show|display|mostra|espandi/i.test(label);if(!likelyClosed)continue;closed++;try{trg.click();window.__dsOpened151.add(c);clicked++;}catch(e){}}return {clicked,headers:specific.length,closed,before};}"""
         if (!expandRx.containsMatchIn(s)) error("v0.14.7 expand function not found")
-        s = expandRx.replaceFirst(s, newExpand)
+        s = expandRx.replaceFirst(s) { newExpand }
 
         val oldRange = "    private fun inSelectedRange(t:String):Boolean{val f=mins(fromSpinner.selectedItem?.toString()?:\"00:00\");val z=mins(toSpinner.selectedItem?.toString()?:\"23:59\");val x=mins(t);return if(x<0||f<0||z<0)false else if(f<=z)x>=f&&x<z else x>=f||x<z}"
         val newRange = "    private fun currentMinute():Int{val c=java.util.Calendar.getInstance();return c.get(java.util.Calendar.HOUR_OF_DAY)*60+c.get(java.util.Calendar.MINUTE)}\n    private fun inSelectedRange(t:String):Boolean{val f=mins(fromSpinner.selectedItem?.toString()?:\"00:00\");val z=mins(toSpinner.selectedItem?.toString()?:\"23:59\");val x=mins(t);if(x<0||f<0||z<0)return false;val inside=if(f<=z)x>=f&&x<z else x>=f||x<z;return inside&&x>currentMinute()}"
@@ -79,7 +79,7 @@ val patchV0151 = tasks.register("patchV0151") {
         }
         historyWeb.webViewClient="""
         if (!detailClientRx.containsMatchIn(s)) error("detail web client not found")
-        s = detailClientRx.replaceFirst(s, detailClientNew)
+        s = detailClientRx.replaceFirst(s) { detailClientNew }
 
         val oldClick = "        scanBtn.setOnClickListener{extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600)}"
         val newClick = "        scanBtn.setOnClickListener{prepareDetailWebForScan();extractMain(false);handler.postDelayed({extractMain(false)},800);handler.postDelayed({extractMain(false)},1600);handler.postDelayed({extractMain(false)},2600);handler.postDelayed({extractMain(false)},3800);handler.postDelayed({startDetailQueue()},4600);handler.postDelayed({forceStartDetailQueue()},5200);handler.postDelayed({forceStartDetailQueue()},7500);handler.postDelayed({forceStartDetailQueue()},11000)}"
@@ -94,7 +94,7 @@ val patchV0151 = tasks.register("patchV0151") {
         val procRx = Regex("    private fun processNextDetail\\(\\)\\{.*?handler\\.postDelayed\\(\\{if\\(currentDetailKey==key&&detailGeneration==gen\\)extractDetailSnai\\(true\\)\\},15000\\)\\}", RegexOption.DOT_MATCHES_ALL)
         val procNew = """    private fun processNextDetail(){if(currentDetailKey!=null)return;val key=if(detailQueue.isEmpty())null else detailQueue.removeFirst();if(key==null){updateStatus();processNextHistory();return};val m=matches[key]?:run{processNextDetail();return};currentDetailKey=key;detailGeneration++;val gen=detailGeneration;val total=detailsAttempted+detailQueue.size+1;status.text=\"SNAI ${'$'}{detailsAttempted+1}/${'$'}total · ${'$'}{m.time} ${'$'}{m.home} vs ${'$'}{m.away}\";val base=m.url.substringBefore(\"?\").trimEnd('/');val query=m.url.substringAfter(\"?\",\"\");val qurl=if(base.contains(\"/quote/\"))m.url else base+\"/quote/quote-1x2/finale/\"+(if(query.isNotBlank())\"?\"+query else \"\");detailLoadRequested++;detailLastUrl=qurl;detailWeb.post{if(currentDetailKey==key&&detailGeneration==gen)detailWeb.loadUrl(qurl)};handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(false)},8500);handler.postDelayed({if(currentDetailKey==key&&detailGeneration==gen)extractDetailSnai(true)},15000)}"""
         if (!procRx.containsMatchIn(s)) error("process detail not found")
-        s = procRx.replaceFirst(s, procNew)
+        s = procRx.replaceFirst(s) { procNew }
 
         s = s.replace("AUTO-OPEN: intestazioni ${'$'}leagueHeadersSeen", "AUTO-OPEN: controlli campionato ${'$'}leagueHeadersSeen")
         s = s.replace("FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa)", "FASCIA: ${'$'}from - ${'$'}to (ora finale esclusa · solo partite non iniziate)")
