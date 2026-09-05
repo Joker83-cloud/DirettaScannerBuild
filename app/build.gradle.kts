@@ -72,34 +72,35 @@ val patchV0153 = tasks.register("patchV0153") {
         val exactHistoryCheck = "if((phase==='HOME'?norm(home):norm(away))!==target)continue;out.push"
         val relaxedHistoryCheck = "const side=phase==='HOME'?norm(home):norm(away);if(!(side===target||side.startsWith(target)||target.startsWith(side)))continue;out.push"
         if (!s.contains(exactHistoryCheck)) error("history side check not found")
-        s = s.replace(exactHistoryCheck, relaxedHistoryCheck, true)
+        s = s.replace(exactHistoryCheck, relaxedHistoryCheck)
 
-        s = s.replace("if(out.length<3&&!window.__dsMore140){", "if(out.length<3&&(window.__dsMore153||0)<2){", true)
-        s = s.replace("window.__dsMore140=true;", "window.__dsMore153=(window.__dsMore153||0)+1;", true)
+        s = s.replace("if(out.length<3&&!window.__dsMore140){", "if(out.length<3&&(window.__dsMore153||0)<2){")
+        s = s.replace("window.__dsMore140=true;", "window.__dsMore153=(window.__dsMore153||0)+1;")
 
         val oldInsufficient = "m.historyNote=\"\$phase: solo \${arr.length()} partite\";"
         val newInsufficient = "m.historyNote=phase+\": solo \"+arr.length()+\" partite · righe DOM \"+o.optInt(\"rows\",0);saveState();"
         if (!s.contains(oldInsufficient)) error("history insufficient note not found")
-        s = s.replace(oldInsufficient, newInsufficient, true)
+        s = s.replace(oldInsufficient, newInsufficient)
 
-        s = s.replace("handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},3500);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},6000)",
-            "handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},650);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1400);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},3000)")
+        val oldHistoryTimers = "handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1200);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},2800);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},5000)"
+        val newHistoryTimers = "handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},700);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(false)},1600);handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},3200)"
+        if (!s.contains(oldHistoryTimers)) error("history timers not found")
+        s = s.replace(oldHistoryTimers, newHistoryTimers)
 
-        val oldFinish = "    private fun finishHistoryMatch(){runOnUiThread{currentHistoryKey=null;historyPhase=\"\";historyGeneration++;updateStatus();handler.postDelayed({processNextHistory()},300)}}"
-        val newFinish = "    private fun finishHistoryMatch(){saveState();runOnUiThread{currentHistoryKey=null;historyPhase=\"\";historyGeneration++;historyWeb.stopLoading();historyWeb.loadUrl(\"about:blank\");updateStatus();handler.postDelayed({processNextHistory()},100)}}"
+        val oldFinish = "    private fun finishHistoryMatch(){runOnUiThread{historyWeb.stopLoading();historyWeb.loadUrl(\"about:blank\");historyWeb.clearHistory();currentHistoryKey=null;historyPhase=\"\";historyGeneration++;updateStatus();handler.postDelayed({processNextHistory()},120)}}"
+        val newFinish = "    private fun finishHistoryMatch(){saveState();runOnUiThread{historyWeb.stopLoading();historyWeb.loadUrl(\"about:blank\");historyWeb.clearHistory();currentHistoryKey=null;historyPhase=\"\";historyGeneration++;updateStatus();handler.postDelayed({processNextHistory()},100)}}"
         if (!s.contains(oldFinish)) error("finishHistoryMatch not found")
         s = s.replace(oldFinish, newFinish)
 
-        val oldProcessHistory = "    private fun processNextHistory(){if(currentHistoryKey!=null)return;val key=if(historyQueue.isEmpty())null else historyQueue.removeFirst();if(key==null){updateStatus();return};val m=matches[key]?:run{processNextHistory();return};currentHistoryKey=key;historyPhase=\"HOME\";historyGeneration++;m.historyState=\"RUNNING\";status.text=\"PROFILO 70%… ${'$'}{m.home} vs ${'$'}{m.away} · storico casa\";historyWeb.loadUrl(resultsUrl(m.homeUrl))}"
-        val newProcessHistory = "    private fun processNextHistory(){if(currentHistoryKey!=null)return;val key=if(historyQueue.isEmpty())null else historyQueue.removeFirst();if(key==null){updateStatus();saveState();return};val m=matches[key]?:run{processNextHistory();return};currentHistoryKey=key;historyPhase=\"HOME\";historyGeneration++;val gen=historyGeneration;m.historyState=\"RUNNING\";status.text=\"PROFILO 70%… ${'$'}{m.home} vs ${'$'}{m.away} · storico casa\";historyWeb.loadUrl(resultsUrl(m.homeUrl));handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},4500)}"
+        val oldProcessHistory = "    private fun processNextHistory(){if(currentHistoryKey!=null)return;val key=if(historyQueue.isEmpty())null else historyQueue.removeFirst();if(key==null){updateStatus();return};val m=matches[key]?:run{processNextHistory();return};currentHistoryKey=key;historyPhase=\"HOME\";historyGeneration++;val gen=historyGeneration;m.historyState=\"RUNNING\";val total=historyCompleted+historyUnavailable+historyQueue.size+1;status.text=\"STORICO ${'$'}{historyCompleted+historyUnavailable+1}/${'$'}total · ${'$'}{m.home} vs ${'$'}{m.away}\";historyWeb.loadUrl(resultsUrl(m.homeUrl));handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},8000)}"
+        val newProcessHistory = "    private fun processNextHistory(){if(currentHistoryKey!=null)return;val key=if(historyQueue.isEmpty())null else historyQueue.removeFirst();if(key==null){updateStatus();saveState();return};val m=matches[key]?:run{processNextHistory();return};currentHistoryKey=key;historyPhase=\"HOME\";historyGeneration++;val gen=historyGeneration;m.historyState=\"RUNNING\";val total=historyCompleted+historyUnavailable+historyQueue.size+1;status.text=\"STORICO ${'$'}{historyCompleted+historyUnavailable+1}/${'$'}total · ${'$'}{m.home} vs ${'$'}{m.away}\";historyWeb.loadUrl(resultsUrl(m.homeUrl));handler.postDelayed({if(currentHistoryKey==key&&historyGeneration==gen)extractHistory(true)},4500)}"
         if (!s.contains(oldProcessHistory)) error("processNextHistory not found")
         s = s.replace(oldProcessHistory, newProcessHistory)
 
-        s = s.replace("handler.postDelayed({processNextDetail()},250)", "handler.postDelayed({processNextDetail()},120)")
-
-        val onDetailTail = "runOnUiThread{currentDetailKey=null;detailGeneration++;updateStatus();handler.postDelayed({processNextDetail()},120);handler.postDelayed({processNextHistory()},200)}"
-        val onDetailTailNew = "saveState();runOnUiThread{currentDetailKey=null;detailGeneration++;detailWeb.stopLoading();detailWeb.loadUrl(\"about:blank\");updateStatus();handler.postDelayed({processNextDetail()},120);handler.postDelayed({processNextHistory()},120)}"
-        if (s.contains(onDetailTail)) s = s.replace(onDetailTail, onDetailTailNew)
+        val oldDetailDone = "runOnUiThread{detailWeb.stopLoading();detailWeb.loadUrl(\"about:blank\");detailWeb.clearHistory();currentDetailKey=null;detailGeneration++;updateStatus();handler.postDelayed({processNextDetail()},120);handler.postDelayed({processNextHistory()},120)}"
+        val newDetailDone = "saveState();runOnUiThread{detailWeb.stopLoading();detailWeb.loadUrl(\"about:blank\");detailWeb.clearHistory();currentDetailKey=null;detailGeneration++;updateStatus();handler.postDelayed({processNextDetail()},120);handler.postDelayed({processNextHistory()},120)}"
+        if (!s.contains(oldDetailDone)) error("detail completion not found")
+        s = s.replace(oldDetailDone, newDetailDone)
 
         val persistAnchor = "    private fun copyReport(){val t=report();val cb=getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;cb.setPrimaryClip(ClipData.newPlainText(\"Diretta Scanner report\",t));Toast.makeText(this,\"Report copiato · profilo superato: ${'$'}profilePassed\",Toast.LENGTH_SHORT).show()}"
         val persistCode = """
@@ -111,7 +112,7 @@ val patchV0153 = tasks.register("patchV0153") {
 
         val loadAnchor = "        web.loadUrl(\"https://www.diretta.it/\")"
         if (!s.contains(loadAnchor)) error("initial web load anchor not found")
-        s = s.replace(loadAnchor, "        restoreState();updateStatus();web.loadUrl(\"https://www.diretta.it/\")", true)
+        s = s.replace(loadAnchor, "        restoreState();updateStatus();web.loadUrl(\"https://www.diretta.it/\")")
 
         val destroyAnchor = "    override fun onDestroy(){handler.removeCallbacksAndMessages(null);web.destroy();detailWeb.destroy();historyWeb.destroy();super.onDestroy()}"
         val lifecycle = "    override fun onPause(){saveState();super.onPause()}\n    override fun onStop(){saveState();super.onStop()}\n    override fun onDestroy(){saveState();handler.removeCallbacksAndMessages(null);web.destroy();detailWeb.destroy();historyWeb.destroy();super.onDestroy()}"
