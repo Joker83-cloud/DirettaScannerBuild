@@ -64,12 +64,12 @@ val patchV0151 = tasks.register("patchV0151") {
         val varsAnchor = "private var leagueHeadersSeen=0;private var leaguesClosedSeen=0;private var rowsBeforeExpand=0;private var rowsAfterExpand=0"
         val varsNew = varsAnchor + ";private var detailLoadRequested=0;private var detailPageStarted=0;private var detailPageFinished=0;private var detailLoadErrors=0;private var detailLastUrl=\"\""
         if (!s.contains(varsAnchor)) error("detail diagnostic vars anchor not found")
-        s = s.replace(varsAnchor, varsNew, 1)
+        s = s.replace(varsAnchor, varsNew)
 
         val webAnchor = "detailWeb=WebView(this).apply{visibility=View.INVISIBLE};historyWeb=WebView(this).apply{visibility=View.INVISIBLE}"
         val webNew = "detailWeb=WebView(this).apply{visibility=View.VISIBLE;alpha=0f};historyWeb=WebView(this).apply{visibility=View.VISIBLE;alpha=0f}"
         if (!s.contains(webAnchor)) error("hidden webviews anchor not found")
-        s = s.replace(webAnchor, webNew, 1)
+        s = s.replace(webAnchor, webNew)
 
         val detailClientRx = Regex("        detailWeb\\.webViewClient=object:WebViewClient\\(\\)\\{.*?\\n        historyWeb\\.webViewClient=", RegexOption.DOT_MATCHES_ALL)
         val detailClientNew = """        detailWeb.webViewClient=object:WebViewClient(){
@@ -102,7 +102,7 @@ val patchV0151 = tasks.register("patchV0151") {
         val reportNeedle = "Schede QUOTE: ${'$'}oddsTabsOpened · dettagli: ${'$'}detailsAttempted · SNAI: ${'$'}detailsWithSnai · senza SNAI: ${'$'}detailsWithoutSnai"
         val reportNew = reportNeedle + "\\nDETAIL WEB: richieste ${'$'}detailLoadRequested · started ${'$'}detailPageStarted · finished ${'$'}detailPageFinished · errori ${'$'}detailLoadErrors · ultima URL ${'$'}detailLastUrl"
         if (!s.contains(reportNeedle)) error("report detail diagnostics not found")
-        s = s.replace(reportNeedle, reportNew, 1)
+        s = s.replace(reportNeedle, reportNew)
 
         src.writeText(s)
     }
